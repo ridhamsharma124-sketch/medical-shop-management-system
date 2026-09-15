@@ -8,7 +8,7 @@ export const protect = catchAsync(async (req, res, next) => {
 
   if (req.cookies?.token) {
     token = req.cookies.token;
-  } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+  } else if (req.headers.authorization?.startsWith('Bearer ')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
@@ -27,17 +27,17 @@ export const protect = catchAsync(async (req, res, next) => {
   next();
 });
 
-export const restrictTo = (...roles) => {
+export const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return next(new AppError('You do not have permission to perform this action.', 403));
+      return next(new AppError('Access denied.', 403));
     }
     next();
   };
 };
 
-export const signToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+export const signToken = (userId, role) => {
+  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '30d',
   });
 };

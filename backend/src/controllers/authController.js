@@ -17,7 +17,7 @@ const cookieOptions = {
 };
 
 const sendAuthResponse = (user, statusCode, res) => {
-  const token = signToken(user._id);
+  const token = signToken(user._id, user.role);
   res.cookie('token', token, cookieOptions);
   res.status(statusCode).json({
     success: true,

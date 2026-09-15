@@ -1,13 +1,20 @@
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { AppError } from './errorHandler.js';
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/jpg'];
+const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+const uploadDir = path.resolve('uploads/medicines');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.resolve('uploads/medicines'));
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
@@ -16,7 +23,8 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  if (ALLOWED_TYPES.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_TYPES.includes(file.mimetype) || ALLOWED_EXTS.includes(ext)) {
     cb(null, true);
   } else {
     cb(new AppError('Only image files (jpeg, png, webp, gif) are allowed', 400));
@@ -39,8 +47,8 @@ const normalizeMedicineBody = (req, res, next) => {
     return next();
   }
   if (req.file) {
-    req.body.image = `/uploads/medicines/${req.file.filename}`;
-  }
+  req.body.image = `${req.protocol}://${req.get('host')}/uploads/medicines/${req.file.filename}`;
+}
   for (const field of NUMERIC_FIELDS) {
     if (typeof req.body[field] === 'string' && req.body[field].trim() !== '') {
       const num = Number(req.body[field]);

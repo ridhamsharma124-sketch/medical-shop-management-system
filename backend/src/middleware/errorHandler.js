@@ -7,6 +7,9 @@ export class AppError extends Error {
 }
 
 export const errorHandler = (err, req, res, next) => {
+  if (req.file) {
+    fs.unlink(req.file.path, () => {});
+  }
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Something went wrong';
 

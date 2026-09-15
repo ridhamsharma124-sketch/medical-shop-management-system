@@ -1,12 +1,5 @@
 import { Router } from 'express';
 import {
-  getAllPharmacists,
-  createPharmacist,
-  updatePharmacist,
-  deletePharmacist,
-  getPharmacist
-} from '../controllers/pharmacistController.js';
-import {
   createMedicine,
   getAllMedicines,
   getMedicineById,
@@ -23,20 +16,14 @@ import {
 } from '../controllers/supplierController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { createPharmacistSchema, updatePharmacistSchema } from '../validators/pharmacistValidator.js';
 import { createMedicineSchema, updateMedicineSchema } from '../validators/medicineValidator.js';
 import { uploadMedicineForm } from '../middleware/upload.js';
 import { supplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
 
+
 const router = Router();
 
-router.use(protect, authorize('admin'));
-
-router.get('/pharmacists', getAllPharmacists);
-router.get('/pharmacists/:id', getPharmacist);
-router.post('/pharmacists', validate(createPharmacistSchema), createPharmacist);
-router.put('/pharmacists/:id', validate(updatePharmacistSchema), updatePharmacist);
-router.delete('/pharmacists/:id', deletePharmacist);
+router.use(protect, authorize('pharmacist'));
 
 router.get('/medicines', getAllMedicines);
 router.post('/medicines', uploadMedicineForm, validate(createMedicineSchema), createMedicine);
@@ -56,5 +43,6 @@ router.post('/suppliers', validate(supplierSchema), createSupplier);
 router.get('/suppliers/:id', getSupplierById);
 router.put('/suppliers/:id', validate(updateSupplierSchema), updateSupplier);
 router.delete('/suppliers/:id', deleteSupplier);
+
 
 export default router;

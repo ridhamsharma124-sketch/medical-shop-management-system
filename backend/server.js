@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import connectDB from './src/config/db.js';
 import authRoutes from './src/routes/authRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
+import pharmacistRoutes from './src/routes/pharmacistsRoutes.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
 
 dotenv.config({ quiet: true });
@@ -30,7 +31,8 @@ app.get('/api/health', (req, res) => {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/auth', authRoutes);
-app.use('/api', adminRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/pharmacist', pharmacistRoutes);
 
 app.use(errorHandler);
 

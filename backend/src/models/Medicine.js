@@ -10,6 +10,7 @@ const medicineSchema = new mongoose.Schema(
     },
     genericName: {
       type: String,
+      required: [true, 'Generic name is required'],
       trim: true,
       maxlength: [200, 'Generic name must be at most 200 characters'],
     },
@@ -21,21 +22,24 @@ const medicineSchema = new mongoose.Schema(
     },
     company: {
       type: String,
+      required: [true, 'Company name is required'],
       trim: true,
       maxlength: [150, 'Company name must be at most 150 characters'],
     },
     batch: {
       type: String,
+      required: [true, 'Batch number is required'],
       trim: true,
       maxlength: [100, 'Batch number must be at most 100 characters'],
     },
     unit: {
       type: String,
+      required: [true, 'Unit is required'],
       enum: ['strip', 'tablet', 'bottle', 'box', 'vial', 'sachet'],
-      default: 'strip',
     },
     manufacturingDate: {
       type: Date,
+      required: [true, 'Manufacturing date is required'],
       validate: {
         validator: (v) => !v || v <= Date.now() + 86400000,
         message: 'Manufacturing date cannot be in the future',
@@ -43,20 +47,21 @@ const medicineSchema = new mongoose.Schema(
     },
     expiry: {
       type: Date,
+      required: [true, 'Expiry date is required'],
       validate: {
         validator: (v) => !v || v > Date.now() - 86400000,
         message: 'Expiry date must be in the future',
       },
     },
-    price: {
+    sellingPrice: {
       type: Number,
       required: [true, 'Selling price is required'],
-      min: [0, 'Price cannot be negative'],
+      min: [0, 'Selling price cannot be negative'],
     },
-    cost: {
+    purchasePrice: {
       type: Number,
-      min: [0, 'Cost cannot be negative'],
-      default: 0,
+      required: [true, 'Purchase price is required'],
+      min: [0, 'Purchase price cannot be negative'],
     },
     gst: {
       type: Number,
@@ -70,11 +75,11 @@ const medicineSchema = new mongoose.Schema(
       min: [0, 'Stock cannot be negative'],
       default: 0,
     },
-    // lowStockThreshold: {
-    //   type: Number,
-    //   min: [0, 'Threshold cannot be negative'],
-    //   default: 10,
-    // },
+    lowStockThreshold: {
+      type: Number,
+      min: [0, 'Threshold cannot be negative'],
+      default: 10,
+    },
     description: {
       type: String,
       trim: true,
