@@ -21,6 +21,22 @@ import {
   updateSupplier,
   deleteSupplier,
 } from '../controllers/supplierController.js';
+import {
+  getProfile,
+  updateProfile,
+  changePassword,
+} from '../controllers/profileController.js';
+import { adjustStock, getStockHistory, getMedicinesByStatus } from '../controllers/inventoryController.js';
+import { createPurchaseOrder, getSupplierPurchases, getPurchaseHistory, getPurchaseOrderById, getAllPurchaseItems } from '../controllers/PurchaseOrderController.js';
+import {
+  createCustomer,
+  getAllCustomers,
+  getCustomerById,
+  updateCustomer,
+  deleteCustomer,
+} from '../controllers/customerController.js';
+import { customerSchema, updateCustomerSchema } from '../validators/customerValidator.js';
+import { getNotifications } from "../controllers/notificationController.js";
 import { protect, authorize } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { createPharmacistSchema, updatePharmacistSchema } from '../validators/pharmacistValidator.js';
@@ -51,10 +67,35 @@ router.put(
 router.delete('/medicines/:id', deleteMedicine);
 
 
+router.get('/inventory/stock-history', getStockHistory);
+router.patch('/inventory/:id/stock', adjustStock);
+router.get('/inventory/status', getMedicinesByStatus);
+
 router.get('/suppliers', getSuppliers);
 router.post('/suppliers', validate(supplierSchema), createSupplier);
 router.get('/suppliers/:id', getSupplierById);
 router.put('/suppliers/:id', validate(updateSupplierSchema), updateSupplier);
 router.delete('/suppliers/:id', deleteSupplier);
+
+
+router.post("/purchase-orders", createPurchaseOrder);
+router.get('/purchase-orders', getPurchaseHistory);
+router.get('/purchase-orders/:id', getPurchaseOrderById);
+router.get('/suppliers/:supplierId/purchases', getSupplierPurchases);
+router.get('/purchase-items', getAllPurchaseItems);
+
+router.get('/customers', getAllCustomers);
+router.post('/customers', validate(customerSchema), createCustomer);
+router.get('/customers/:id', getCustomerById);
+router.put('/customers/:id', validate(updateCustomerSchema), updateCustomer);
+router.delete('/customers/:id', deleteCustomer);
+
+
+router.get("/notifications", getNotifications)
+
+router.get("/profile", getProfile);
+router.put("/profile", updateProfile);
+router.put("/profile/change-password", changePassword);
+
 
 export default router;

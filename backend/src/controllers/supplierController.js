@@ -48,8 +48,13 @@ export const getSuppliers = catchAsync(async (req, res) => {
   const limitNum = Math.max(Number(limit), 1);
   const skip = (pageNum - 1) * limitNum;
 
+  let query = Supplier.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum);
+  if (req.user.role === 'admin') {
+    query = query.populate('pharmacist', 'name email');
+  }
+
   const [suppliers, total] = await Promise.all([
-    Supplier.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+    query,
     Supplier.countDocuments(filter),
   ]);
 
@@ -70,7 +75,13 @@ export const getSupplierById = catchAsync(async (req, res, next) => {
       ? { _id: req.params.id, pharmacist: req.user._id }
       : { _id: req.params.id };
 
-  const supplier = await Supplier.findOne(filter);
+  let query = Supplier.findOne(filter);
+  if (req.user.role === 'admin') {
+    query = query.populate('pharmacist', 'name email');
+  }
+
+  const supplier = await query;
+  
   if (!supplier) {
     return next(new AppError('Supplier not found', 404));
   }
