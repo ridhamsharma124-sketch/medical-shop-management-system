@@ -1,7 +1,6 @@
 import Medicine from '../models/Medicine.js';
 import { AppError } from '../middleware/errorHandler.js';
 import catchAsync from '../utils/catchAsync.js';
-import { logActivity } from '../utils/logActivity.js';
 
 const FORCE_OWNER_FILTER = (query, req) => {
   if (req.user.role === 'pharmacist') {
@@ -19,13 +18,6 @@ export const createMedicine = catchAsync(async (req, res, next) => {
   }
 
   const medicine = await Medicine.create(req.body);
-
-  await logActivity({
-    user: req.user,
-    action: 'create',
-    medicine,
-    medicineName: medicine.name,
-  });
 
   res.status(201).json({ success: true, data: medicine });
 });
@@ -237,14 +229,6 @@ export const updateMedicine = catchAsync(async (req, res, next) => {
     }
   }
 
-  await logActivity({
-    user: req.user,
-    action: 'update',
-    medicine,
-    medicineName: medicine.name,
-    changes,
-  });
-
   res.status(200).json({ success: true, data: medicine });
 });
 
@@ -260,13 +244,6 @@ export const deleteMedicine = catchAsync(async (req, res, next) => {
   }
 
   await Medicine.findByIdAndDelete(medicine._id);
-
-  await logActivity({
-    user: req.user,
-    action: 'delete',
-    medicine: medicine._id,
-    medicineName: medicine.name,
-  });
 
   res.status(200).json({ success: true, message: 'Medicine deleted successfully' });
 });
