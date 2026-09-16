@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import {
   Plus,
   Search,
@@ -15,25 +16,32 @@ import {
   AlertTriangle,
   Filter,
   RotateCcw,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { fetchMedicinesList, fetchMedicineDetail, searchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
+import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 
-const mockMedicines = [
-  { _id: '1', name: 'Paracetamol 500mg', category: 'Tablet', company: 'Cipla', supplier: 'MedSupply Co.', batch: 'AC-2201', stock: 2450, lowStockThreshold: 50, price: 50, cost: 32, unit: 'strip', expiry: '2026-12-15' },
-  { _id: '2', name: 'Amoxicillin 250mg', category: 'Capsule', company: 'Sun Pharma', supplier: 'Pharma Distributors', batch: 'AM-5541', stock: 1180, lowStockThreshold: 50, price: 95, cost: 68, unit: 'strip', expiry: '2026-08-20' },
-  { _id: '3', name: 'Cetirizine 10mg', category: 'Tablet', company: 'Cipla', supplier: 'MedSupply Co.', batch: 'CT-0877', stock: 8, lowStockThreshold: 50, price: 35, cost: 20, unit: 'strip', expiry: '2026-10-09' },
-  { _id: '4', name: 'Vitamin D3 60k', category: 'Capsule', company: 'Zydus', supplier: 'HealthFirst Supplies', batch: 'VD-1120', stock: 0, lowStockThreshold: 20, price: 120, cost: 85, unit: 'strip', expiry: '2027-03-10' },
-  { _id: '5', name: 'Azithromycin 500', category: 'Tablet', company: "Dr. Reddy's", supplier: 'Pharma Distributors', batch: 'AZ-3345', stock: 320, lowStockThreshold: 40, price: 145, cost: 98, unit: 'strip', expiry: '2026-10-21' },
-  { _id: '6', name: 'Omeprazole 20mg', category: 'Capsule', company: 'Alkem', supplier: 'MedSupply Co.', batch: 'OM-7890', stock: 540, lowStockThreshold: 50, price: 65, cost: 42, unit: 'strip', expiry: '2027-01-15' },
-  { _id: '7', name: 'Metformin 500mg', category: 'Tablet', company: 'USV', supplier: 'HealthFirst Supplies', batch: 'MF-4456', stock: 15, lowStockThreshold: 40, price: 28, cost: 15, unit: 'strip', expiry: '2026-09-30' },
-  { _id: '8', name: 'Ibuprofen 400mg', category: 'Tablet', company: 'Zydus', supplier: 'Pharma Distributors', batch: 'IB-9901', stock: 890, lowStockThreshold: 60, price: 40, cost: 25, unit: 'strip', expiry: '2027-06-20' },
-];
-
-const allCategories = ['All', 'Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops'];
-const allCompanies = ['All', ...new Set(mockMedicines.map((m) => m.company))];
-const allSuppliers = ['All', ...new Set(mockMedicines.map((m) => m.supplier))];
+const allCategories = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops'];
+const allUnits = ['strip', 'tablet', 'bottle', 'box', 'vial', 'sachet'];
 
 const emptyMedicine = {
-  name: '', category: 'Tablet', company: '', batch: '', stock: '', lowStockThreshold: '10', price: '', cost: '', unit: 'strip', expiry: '',
+  name: '',
+  genericName: '',
+  category: 'Tablet',
+  company: '',
+  batch: '',
+  unit: 'strip',
+  manufacturingDate: '',
+  expiry: '',
+  sellingPrice: '',
+  purchasePrice: '',
+  gst: '0',
+  stock: '0',
+  lowStockThreshold: '10',
+  description: '',
+  pharmacist: '',
 };
 
 function getStatus(stock, threshold) {
@@ -47,6 +55,13 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function toDateInput(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
+}
+
 function isExpiringSoon(d, days = 30) {
   if (!d) return false;
   const diff = new Date(d).getTime() - Date.now();
@@ -54,19 +69,55 @@ function isExpiringSoon(d, days = 30) {
 }
 
 export default function MedicinesPage() {
-  const [medicines, setMedicines] = useState(mockMedicines);
+  const user = useSelector((state) => state.auth.user);
+  const role = user?.role || 'admin';
+  const location = useLocation();
+  const base = location.pathname.startsWith('/pharmacist') ? '/pharmacist' : '/admin';
+  const dispatch = useDispatch();
+  const { items: medicines, loading, error: loadError, viewItem, viewLoading, viewError, searchResults, searchLoading } = useSelector((state) => state.medicines);
+  const { items: pharmacists } = useSelector((state) => state.pharmacists);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+  const displayError = loadError && !errorDismissed ? loadError : '';
   const [search, setSearch] = useState('');
+  const [searchingFor, setSearchingFor] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
-  const [supplierFilter, setSupplierFilter] = useState('All');
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef(null);
   const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(null);
   const [form, setForm] = useState(emptyMedicine);
+  const [imageFile, setImageFile] = useState(null);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [viewId, setViewId] = useState(null);
+
+  const loadData = useCallback(() => {
+    dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
+  }, [dispatch, role]);
+
+  useEffect(() => {
+    const t = setTimeout(() => loadData(), 0);
+    return () => clearTimeout(t);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (role === 'admin') {
+      dispatch(fetchAllPharmacists({ page: 1, limit: 200 }));
+    }
+  }, [dispatch, role]);
+
+  useEffect(() => {
+    if (!search.trim()) return undefined;
+    const t = setTimeout(() => {
+      setSearchingFor(search.trim());
+      dispatch(searchMedicinesList({ role, params: { q: search.trim(), limit: 200 } }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, role, dispatch]);
 
   useEffect(() => {
     if (!filterOpen) return undefined;
@@ -77,30 +128,21 @@ export default function MedicinesPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [filterOpen]);
 
-  const activeFilterCount =
-    (categoryFilter !== 'All' ? 1 : 0) +
-    (companyFilter !== 'All' ? 1 : 0) +
-    (supplierFilter !== 'All' ? 1 : 0);
+  const allCompanies = ['All', ...new Set(medicines.map((m) => m.company).filter(Boolean))];
+
+  const activeFilterCount = (categoryFilter !== 'All' ? 1 : 0) + (companyFilter !== 'All' ? 1 : 0);
 
   const resetFilters = () => {
     setCategoryFilter('All');
     setCompanyFilter('All');
-    setSupplierFilter('All');
     setPage(1);
   };
 
   const filtered = useMemo(() => {
-    let list = [...medicines];
-
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.category.toLowerCase().includes(q) ||
-        m.company.toLowerCase().includes(q) ||
-        m.batch.toLowerCase().includes(q)
-      );
-    }
+    const isSearching = search.trim() !== '';
+    if (isSearching && (searchLoading || searchingFor !== search.trim())) return [];
+    const base = isSearching ? searchResults : medicines;
+    let list = [...base];
 
     if (categoryFilter !== 'All') {
       list = list.filter((m) => m.category === categoryFilter);
@@ -110,21 +152,17 @@ export default function MedicinesPage() {
       list = list.filter((m) => m.company === companyFilter);
     }
 
-    if (supplierFilter !== 'All') {
-      list = list.filter((m) => m.supplier === supplierFilter);
-    }
-
     const sortMap = {
-      newest: (a, b) => new Date(b.expiry) - new Date(a.expiry),
-      oldest: (a, b) => new Date(a.expiry) - new Date(b.expiry),
+      newest: (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
+      oldest: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
       name: (a, b) => a.name.localeCompare(b.name),
-      price: (a, b) => b.price - a.price,
-      stock: (a, b) => a.stock - b.stock,
+      price: (a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0),
+      stock: (a, b) => (a.stock || 0) - (b.stock || 0),
     };
     list.sort(sortMap[sort] || sortMap.newest);
 
     return list;
-  }, [medicines, search, categoryFilter, companyFilter, supplierFilter, sort]);
+  }, [medicines, searchResults, searchLoading, searchingFor, search, categoryFilter, companyFilter, sort]);
 
   const limit = 6;
   const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
@@ -132,29 +170,130 @@ export default function MedicinesPage() {
 
   const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
-  const handleSave = () => {
-    if (!form.name || !form.category || !form.price || !form.stock) return;
-    if (showModal === 'add') {
-      setMedicines((prev) => [
-        { ...form, _id: Date.now().toString(), stock: Number(form.stock), price: Number(form.price), cost: Number(form.cost || 0), lowStockThreshold: Number(form.lowStockThreshold || 10) },
-        ...prev,
-      ]);
-    } else {
-      setMedicines((prev) =>
-        prev.map((m) =>
-          m._id === showModal
-            ? { ...m, ...form, stock: Number(form.stock), price: Number(form.price), cost: Number(form.cost || 0), lowStockThreshold: Number(form.lowStockThreshold || 10) }
-            : m
-        )
-      );
+  const buildFormData = (data) => {
+    const fd = new FormData();
+    const fields = [
+      'name',
+      'genericName',
+      'category',
+      'company',
+      'batch',
+      'unit',
+      'manufacturingDate',
+      'expiry',
+      'sellingPrice',
+      'purchasePrice',
+      'gst',
+      'stock',
+      'lowStockThreshold',
+      'description',
+    ];
+    for (const key of fields) {
+      if (data[key] !== undefined && data[key] !== null && data[key] !== '') {
+        fd.append(key, data[key]);
+      }
     }
-    setShowModal(null);
-    setForm(emptyMedicine);
+    if (role === 'admin' && data.pharmacist) {
+      fd.append('pharmacist', data.pharmacist);
+    }
+    if (imageFile) {
+      fd.append('image', imageFile);
+    }
+    return fd;
   };
 
-  const handleDelete = () => {
-    setMedicines((prev) => prev.filter((m) => m._id !== deleteId));
+  const handleSave = async () => {
+    setFormError('');
+    if (!form.name || !form.genericName || !form.company || !form.batch || !form.unit) {
+      setFormError('Name, Generic Name, Company, Batch and Unit are required');
+      return;
+    }
+    if (!form.sellingPrice || !form.purchasePrice) {
+      setFormError('Selling Price and Purchase Price are required');
+      return;
+    }
+    if (!form.manufacturingDate || !form.expiry) {
+      setFormError('Manufacturing Date and Expiry Date are required');
+      return;
+    }
+    if (role === 'admin' && !form.pharmacist) {
+      setFormError('Please select a pharmacist for this medicine');
+      return;
+    }
+    if (imageFile && imageFile.size > 2 * 1024 * 1024) {
+      setFormError('Image file must be less than 2MB');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const fd = buildFormData(form);
+      if (showModal === 'add') {
+        await dispatch(createNewMedicine({ role, payload: fd })).unwrap();
+        toast.success('Medicine added successfully');
+      } else {
+        await dispatch(updateExistingMedicine({ role, id: showModal, payload: fd })).unwrap();
+        toast.success('Medicine updated successfully');
+      }
+      setShowModal(null);
+      setForm(emptyMedicine);
+      setImageFile(null);
+    } catch (err) {
+      const msg = typeof err === 'string' ? err : 'Failed to save medicine';
+      setFormError(msg);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await dispatch(deleteExistingMedicine({ role, id: deleteId })).unwrap();
+      toast.success('Medicine deleted successfully');
+      setDeleteId(null);
+  } catch {
+    toast.error('Failed to delete medicine');
     setDeleteId(null);
+  } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openAdd = () => {
+    setForm(emptyMedicine);
+    setImageFile(null);
+    setFormError('');
+    setShowModal('add');
+  };
+
+  const openEdit = (m) => {
+    setForm({
+      name: m.name || '',
+      genericName: m.genericName || '',
+      category: m.category || 'Tablet',
+      company: m.company || '',
+      batch: m.batch || '',
+      unit: m.unit || 'strip',
+      manufacturingDate: toDateInput(m.manufacturingDate),
+      expiry: toDateInput(m.expiry),
+      sellingPrice: m.sellingPrice ?? '',
+      purchasePrice: m.purchasePrice ?? '',
+      gst: m.gst ?? '0',
+      stock: m.stock ?? '0',
+      lowStockThreshold: m.lowStockThreshold ?? '10',
+      description: m.description || '',
+      pharmacist: m.pharmacist || '',
+    });
+    setImageFile(null);
+    setFormError('');
+    setShowModal(m._id);
+  };
+
+  const handleView = (id) => {
+    setViewId(id);
+    dispatch(fetchMedicineDetail({ role, id }));
   };
 
   return (
@@ -162,7 +301,7 @@ export default function MedicinesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link
-            to="/admin"
+            to={base}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-heading transition-colors hover:bg-bgsecondary hover:text-accent"
             title="Back to dashboard"
           >
@@ -174,7 +313,7 @@ export default function MedicinesPage() {
           </div>
         </div>
         <button
-          onClick={() => { setForm(emptyMedicine); setShowModal('add'); }}
+          onClick={openAdd}
           className="inline-flex items-center gap-2 rounded-lgx bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
         >
           <Plus size={16} />
@@ -182,13 +321,22 @@ export default function MedicinesPage() {
         </button>
       </div>
 
+      {displayError && (
+        <div className="flex items-center justify-between gap-3 rounded-lgx border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-600">
+          <span>{displayError}</span>
+          <button onClick={() => setErrorDismissed(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-100">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-body" />
           <input
             type="text"
-            placeholder="Search by name, batch, company..."
+            placeholder="Search by name, generic, batch, company..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="h-10 w-full rounded-lg border border-line bg-surface pl-10 pr-4 text-[14px] text-heading placeholder:text-[#B5A99A] transition-[border-color,box-shadow] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
@@ -226,9 +374,8 @@ export default function MedicinesPage() {
                   onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
                   className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
                 >
-                  {allCategories.map((c) => (
-                    <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>
-                  ))}
+                  <option value="All">All Categories</option>
+                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
@@ -241,19 +388,6 @@ export default function MedicinesPage() {
                 >
                   {allCompanies.map((c) => (
                     <option key={c} value={c}>{c === 'All' ? 'All Companies' : c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mb-4">
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Supplier</label>
-                <select
-                  value={supplierFilter}
-                  onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  {allSuppliers.map((s) => (
-                    <option key={s} value={s}>{s === 'All' ? 'All Suppliers' : s}</option>
                   ))}
                 </select>
               </div>
@@ -308,15 +442,28 @@ export default function MedicinesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {paged.length === 0 && (
+            {loading && (
+              <tr>
+                <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">Loading medicines...</td>
+              </tr>
+            )}
+            {!loading && search.trim() && (searchLoading || searchingFor !== search.trim()) && (
               <tr>
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
-                  <Pill size={36} className="mx-auto mb-3 text-line" />
-                  No medicines found
+                  <Loader2 size={20} className="mx-auto mb-2 animate-spin text-accent" />
+                  Searching medicines...
                 </td>
               </tr>
             )}
-            {paged.map((m) => {
+            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
+                  <Pill size={36} className="mx-auto mb-3 text-line" />
+                  No medicines found {search.trim() && <>for <span className="font-medium text-heading">"{search.trim()}"</span></>}
+                </td>
+              </tr>
+            )}
+            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.map((m) => {
               const status = getStatus(m.stock, m.lowStockThreshold);
               const expiring = isExpiringSoon(m.expiry);
               return (
@@ -325,8 +472,8 @@ export default function MedicinesPage() {
                   <td className="px-4 py-3 text-[13px] text-body hidden sm:table-cell">{m.category}</td>
                   <td className="px-4 py-3 text-[13px] text-body hidden md:table-cell">{m.company}</td>
                   <td className="px-4 py-3 text-[13px] font-mono text-body hidden lg:table-cell">{m.batch}</td>
-                  <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">{m.stock.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">₹{m.price}</td>
+                  <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">{Number(m.stock).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">₹{m.sellingPrice}</td>
                   <td className={`px-4 py-3 text-right text-[13px] font-semibold hidden sm:table-cell ${expiring ? 'text-red-600' : 'text-body'}`}>
                     {formatDate(m.expiry)}
                     {expiring && <AlertTriangle size={13} className="ml-1 inline text-red-500" />}
@@ -339,14 +486,14 @@ export default function MedicinesPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
-                        onClick={() => setViewId(m._id)}
+                        onClick={() => handleView(m._id)}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
                         title="View details"
                       >
                         <Eye size={15} />
                       </button>
                       <button
-                        onClick={() => { setForm({ ...m }); setShowModal(m._id); }}
+                        onClick={() => openEdit(m)}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
                         title="Edit"
                       >
@@ -369,7 +516,7 @@ export default function MedicinesPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
             Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
@@ -409,14 +556,21 @@ export default function MedicinesPage() {
       {/* ADD / EDIT MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowModal(null)} />
-          <div className="relative w-full max-w-[640px] max-h-[90vh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(null)} />
+          <div className="relative w-full max-w-[760px] max-h-[90vh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md">
               <h3 className="text-lg font-bold text-heading">{showModal === 'add' ? 'Add Medicine' : 'Edit Medicine'}</h3>
               <button onClick={() => setShowModal(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
                 <X size={18} />
               </button>
             </div>
+
+            {formError && (
+              <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-600">
+                <span>{formError}</span>
+                <button onClick={() => setFormError('')} className="text-red-500 hover:text-red-700"><X size={14} /></button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -425,37 +579,57 @@ export default function MedicinesPage() {
               </div>
 
               <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Generic Name *</label>
+                <input value={form.genericName} onChange={(e) => setField('genericName', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="e.g. Paracetamol" />
+              </div>
+
+              <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category *</label>
                 <select value={form.category} onChange={(e) => setField('category', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {allCategories.filter((c) => c !== 'All').map((c) => <option key={c}>{c}</option>)}
+                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Company</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Company *</label>
                 <input value={form.company} onChange={(e) => setField('company', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="e.g. Cipla" />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Batch Number</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Batch Number *</label>
                 <input value={form.batch} onChange={(e) => setField('batch', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="e.g. AC-2201" />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Unit</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Unit *</label>
                 <select value={form.unit} onChange={(e) => setField('unit', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {['strip', 'tablet', 'bottle', 'box', 'vial', 'sachet'].map((u) => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
+                  {allUnits.map((u) => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Selling Price (₹) *</label>
-                <input type="number" min="0" value={form.price} onChange={(e) => setField('price', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Manufacturing Date *</label>
+                <input type="date" value={form.manufacturingDate} onChange={(e) => setField('manufacturingDate', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Purchase Price (₹)</label>
-                <input type="number" min="0" value={form.cost} onChange={(e) => setField('cost', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Expiry Date *</label>
+                <input type="date" value={form.expiry} onChange={(e) => setField('expiry', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Selling Price (₹) *</label>
+                <input type="number" min="0" step="0.01" value={form.sellingPrice} onChange={(e) => setField('sellingPrice', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Purchase Price (₹) *</label>
+                <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setField('purchasePrice', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">GST (%)</label>
+                <input type="number" min="0" max="100" step="0.01" value={form.gst} onChange={(e) => setField('gst', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
               </div>
 
               <div>
@@ -468,9 +642,33 @@ export default function MedicinesPage() {
                 <input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setField('lowStockThreshold', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="10" />
               </div>
 
+              {role === 'admin' && (
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
+                  <select value={form.pharmacist} onChange={(e) => setField('pharmacist', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
+                    <option value="">Select pharmacist...</option>
+                    {pharmacists.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.email})</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Expiry Date</label>
-                <input type="date" value={form.expiry ? new Date(form.expiry).toISOString().split('T')[0] : ''} onChange={(e) => setField('expiry', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" />
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Description</label>
+                <textarea value={form.description} onChange={(e) => setField('description', e.target.value)} rows={2} className="w-full rounded-lg border border-line bg-bgprimary px-3.5 py-2.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="Optional description" />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-[13px] font-medium text-heading">Medicine Image</label>
+                <label className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-lg border border-dashed border-line bg-bgprimary px-3.5 text-[14px] text-body transition-colors hover:border-accent hover:text-accent">
+                  <ImagePlus size={17} />
+                  {imageFile ? imageFile.name : 'Choose an image (optional)'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
             </div>
 
@@ -480,10 +678,10 @@ export default function MedicinesPage() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={!form.name || !form.price || !form.stock}
+                disabled={saving}
                 className="h-10 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {showModal === 'add' ? 'Add Medicine' : 'Save Changes'}
+                {saving ? 'Saving...' : showModal === 'add' ? 'Add Medicine' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -493,33 +691,69 @@ export default function MedicinesPage() {
       {/* VIEW DETAIL MODAL */}
       {viewId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setViewId(null)} />
-          <div className="relative w-full max-w-[520px] rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewId(null)} />
+          <div className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-line bg-surface px-6 py-4">
               <h3 className="text-lg font-bold text-heading">Medicine Details</h3>
               <button onClick={() => setViewId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
                 <X size={18} />
               </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto">
+
             {(() => {
-              const m = medicines.find((x) => x._id === viewId);
+              const listItem = medicines.find((x) => x._id === viewId);
+              const m = viewItem && viewItem._id === viewId ? viewItem : listItem;
               if (!m) return null;
+
+              if (viewLoading) {
+                return (
+                  <div className="flex flex-col items-center justify-center gap-3 px-6 py-16">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                    <span className="text-[13px] text-body">Loading medicine details...</span>
+                  </div>
+                );
+              }
+
+              if (viewError && !m) {
+                return (
+                  <div className="px-6 py-10 text-center text-[13px] text-red-600">
+                    {viewError}
+                  </div>
+                );
+              }
+
               const status = getStatus(m.stock, m.lowStockThreshold);
+              const pharmacistName = pharmacists.find((p) => p._id === m.pharmacist)?.name;
               const rows = [
+                { label: 'Generic Name', value: m.genericName || '—' },
                 { label: 'Category', value: m.category },
                 { label: 'Company', value: m.company || '—' },
                 { label: 'Batch Number', value: m.batch || '—' },
-                { label: 'Unit', value: m.unit.charAt(0).toUpperCase() + m.unit.slice(1) },
-                { label: 'Stock Quantity', value: m.stock.toLocaleString() },
+                { label: 'Unit', value: m.unit ? m.unit.charAt(0).toUpperCase() + m.unit.slice(1) : '—' },
+                { label: 'Stock Quantity', value: Number(m.stock).toLocaleString() },
                 { label: 'Low Stock Threshold', value: m.lowStockThreshold },
-                { label: 'Selling Price', value: `₹${m.price}` },
-                { label: 'Purchase Price', value: m.cost ? `₹${m.cost}` : '—' },
+                { label: 'Selling Price', value: m.sellingPrice != null ? `₹${m.sellingPrice}` : '—' },
+                { label: 'Purchase Price', value: m.purchasePrice != null ? `₹${m.purchasePrice}` : '—' },
+                { label: 'GST', value: m.gst ? `${m.gst}%` : '—' },
+                { label: 'Manufacturing Date', value: formatDate(m.manufacturingDate) },
                 { label: 'Expiry Date', value: formatDate(m.expiry) },
               ];
+              if (role === 'admin') {
+                rows.push({ label: 'Pharmacist', value: pharmacistName || 'Unassigned' });
+              }
+              if (m.description) {
+                rows.push({ label: 'Description', value: m.description });
+              }
               return (
                 <>
-                  <div className="px-6 pt-5">
+                  {m.image && (
+                    <div className="flex justify-center px-6 pt-5">
+                      <img src={m.image} alt={m.name} className="max-h-40 rounded-xl border border-line object-contain" />
+                    </div>
+                  )}
+                  <div className="px-6 pt-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent">
@@ -548,14 +782,18 @@ export default function MedicinesPage() {
               );
             })()}
 
-            <div className="flex items-center justify-end border-t border-line px-6 py-4">
-              <button
-                onClick={() => { setForm({ ...medicines.find((m) => m._id === viewId) }); setViewId(null); setShowModal(viewId); }}
-                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
-              >
-                <Edit2 size={15} />
-                Edit Medicine
-              </button>
+            {viewItem && viewItem._id === viewId && (
+                <div className="flex items-center justify-end border-t border-line px-6 py-4">
+                  <button
+                    onClick={() => { setViewId(null); openEdit(viewItem); }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
+                  >
+                    <Edit2 size={15} />
+                    Edit Medicine
+                  </button>
+                </div>
+              )}
+
             </div>
           </div>
         </div>
@@ -564,7 +802,7 @@ export default function MedicinesPage() {
       {/* DELETE CONFIRMATION MODAL */}
       {deleteId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteId(null)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
           <div className="relative w-full max-w-[400px] rounded-2xl border border-line bg-surface p-6 shadow-2xl">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
               <AlertTriangle size={22} className="text-red-600" />
@@ -577,8 +815,8 @@ export default function MedicinesPage() {
               <button onClick={() => setDeleteId(null)} className="h-10 rounded-lg border border-line bg-surface px-5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary">
                 Cancel
               </button>
-              <button onClick={handleDelete} className="h-10 rounded-lg bg-red-600 px-5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-red-700">
-                Delete
+              <button onClick={handleDelete} disabled={deleting} className="h-10 rounded-lg bg-red-600 px-5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-red-700 disabled:opacity-60">
+                {deleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

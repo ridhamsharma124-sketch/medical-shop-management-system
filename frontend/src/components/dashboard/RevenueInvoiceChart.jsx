@@ -1,7 +1,7 @@
 import {
   ComposedChart,
   Bar,
-  Area,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { palette } from './TopSellingChart';
+
 
 const data = [
   { m: 'Jan', invoices: 148, revenue: 1.6 },
@@ -26,61 +26,76 @@ const data = [
   { m: 'Dec', invoices: 326, revenue: 4.2 },
 ];
 
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div className="rounded-lgx border border-line bg-surface px-3.5 py-2.5 shadow-float">
+      <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-body">{label}</p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center gap-2 py-0.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-[12px] font-medium text-heading">
+            {p.name}:{' '}
+            <span className="font-bold">
+              {p.name === 'Revenue' ? `₹${p.value}L` : p.value}
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export default function RevenueInvoiceChart() {
   return (
     <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: -18 }}>
           <defs>
-            <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={palette.accent} stopOpacity={0.28} />
-              <stop offset="100%" stopColor={palette.accent} stopOpacity={0.02} />
+            <linearGradient id="invoiceGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--color-mustard)" stopOpacity={1} />
+              <stop offset="100%" stopColor="var(--color-mustard)" stopOpacity={0.65} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={palette.line} vertical={false} />
-          <XAxis dataKey="m" tick={{ fontSize: 12, fill: palette.body }} tickLine={false} axisLine={false} dy={6} />
+          <CartesianGrid strokeDasharray="4 4" stroke="var(--color-line)" vertical={false} />
+          <XAxis dataKey="m" tick={{ fontSize: 12, fill: 'var(--color-body)' }} tickLine={false} axisLine={false} dy={6} />
           <YAxis
             yAxisId="invoices"
-            tick={{ fontSize: 12, fill: palette.body }}
+            tick={{ fontSize: 12, fill: 'var(--color-body)' }}
             tickLine={false}
             axisLine={false}
           />
           <YAxis
             yAxisId="revenue"
             orientation="right"
-            tick={{ fontSize: 12, fill: palette.body }}
+            tick={{ fontSize: 12, fill: 'var(--color-body)' }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => `₹${v}L`}
           />
-          <Tooltip
-            cursor={{ fill: palette.bgPrimary }}
-            contentStyle={{
-              background: palette.surface,
-              border: `1px solid ${palette.line}`,
-              borderRadius: 12,
-              boxShadow: '0 8px 24px rgba(43,33,27,0.08)',
-              fontSize: 13,
-              color: palette.heading,
-            }}
-            formatter={(v, name) => (name === 'Revenue' ? [`₹${v}L`, name] : [`${v}`, name])}
-          />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--color-bgprimary)', opacity: 0.5 }} />
           <Legend
             iconType="circle"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 12.5, color: palette.body, paddingTop: 6 }}
+            iconSize={9}
+            wrapperStyle={{ fontSize: 12.5, color: 'var(--color-body)', paddingTop: 8 }}
           />
-          <Bar yAxisId="invoices" dataKey="invoices" name="Invoices" fill={palette.mustard} radius={[5, 5, 0, 0]} barSize={16} />
-          <Area
+          <Bar
+            yAxisId="invoices"
+            dataKey="invoices"
+            name="Invoices"
+            fill="url(#invoiceGrad)"
+            radius={[6, 6, 2, 2]}
+            barSize={18}
+          />
+          <Line
             yAxisId="revenue"
             type="monotone"
             dataKey="revenue"
             name="Revenue"
-            stroke={palette.accent}
-            strokeWidth={2.5}
-            fill="url(#revenueGrad)"
-            dot={false}
-            activeDot={{ r: 5, fill: palette.accent, stroke: palette.surface, strokeWidth: 2 }}
+            stroke="var(--color-accent)"
+            strokeWidth={2.6}
+            strokeLinecap="round"
+            activeDot={{ r: 6.5, fill: 'var(--color-accent)', stroke: 'var(--color-surface)', strokeWidth: 2.5 }}
           />
         </ComposedChart>
       </ResponsiveContainer>

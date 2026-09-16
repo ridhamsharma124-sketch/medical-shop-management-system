@@ -93,8 +93,7 @@ const categoryColors = {
 };
 
 export default function InventoryPage() {
-  const user = useSelector((state) => state.auth.user);
-  const role = user?.role || 'admin';
+    const role = 'pharmacist';
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const base = location.pathname.startsWith('/pharmacist') ? '/pharmacist' : '/admin';

@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   ShieldCheck,
   X,
-  ChevronsLeft,
   LogOut,
   Menu,
   Bell,
@@ -12,26 +11,22 @@ import {
   FlaskConical,
   Archive,
   Truck,
-  ClipboardList,
   Users,
-  Receipt,
-  BarChart3,
-  UserPlus,
+  UserCog,
   UserCircle,
+  ShoppingCart,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { logout } from '../features/authSlice';
 
 const NAV_ITEMS = (base) => [
   { to: base, label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'pharmacist'], end: true },
   { to: `${base}/medicines`, label: 'Medicine Management', icon: FlaskConical, roles: ['admin', 'pharmacist'] },
-  { to: `${base}/suppliers`, label: 'Supplier Management', icon: Truck, roles: ['admin'] },
+  { to: `${base}/pharmacists`, label: 'Pharmacist Management', icon: UserCog, roles: ['admin'] },
+  { to: `${base}/suppliers`, label: 'Supplier Management', icon: Truck, roles: ['admin', 'pharmacist'] },
+  { to: `${base}/purchases`, label: 'Purchase Orders', icon: ShoppingCart, roles: ['admin', 'pharmacist'] },
   { to: `${base}/inventory`, label: 'Inventory Management', icon: Archive, roles: ['admin', 'pharmacist'] },
-  // { to: `${base}/pharmacists`, label: 'Pharmacist Management', icon: UserPlus, roles: ['admin'] },
-  // { to: `${base}/purchases`, label: 'Purchase Orders', icon: ClipboardList, roles: ['admin'] },
   { to: `${base}/customers`, label: 'Customer Management', icon: Users, roles: ['admin', 'pharmacist'] },
-  { to: `${base}/billing`, label: 'Billing', icon: Receipt, roles: ['admin', 'pharmacist'] },
-  { to: `${base}/reports`, label: 'Reports', icon: BarChart3, roles: ['admin'] },
-  { to: `${base}/notifications`, label: 'Notifications', icon: Bell, roles: ['admin', 'pharmacist'] },
   { to: `${base}/profile`, label: 'My Profile', icon: UserCircle, roles: ['admin', 'pharmacist'] },
 ];
 
@@ -43,128 +38,108 @@ const getPageTitle = (pathname, base) => {
   return item ? item.label : 'Dashboard';
 };
 
-function Sidebar({ base, role, collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
-  const navigate = useNavigate();
-  const dispatch = useDispatch();
-  const user = useSelector((state) => state.auth.user);
-  const items = NAV_ITEMS(base).filter((i) => i.roles.includes(role));
-
-  const initials = (user?.name || 'U')
+function getInitials(name) {
+  return (name || 'U')
     .split(' ')
     .map((w) => w[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+function Sidebar({ base, role, open, onClose }) {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth.user);
+  const items = NAV_ITEMS(base).filter((i) => i.roles.includes(role));
 
   const handleLogout = async () => {
     await dispatch(logout());
+    toast.success('Logged out successfully');
     navigate('/login', { replace: true });
   };
 
   return (
-    <>
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={onCloseMobile} />
-      )}
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-surface shadow-2xl transition-transform duration-300 ease-out ${
+        open ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+      {/* Brand */}
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-5">
+        <Link to={base} onClick={onClose} className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-[0_4px_12px_rgba(193,89,46,0.35)]">
+            <ShieldCheck size={19} strokeWidth={2.4} />
+          </span>
+          <span className="font-display whitespace-nowrap text-[1.15rem] font-bold tracking-tight text-heading">
+            MedHeritage
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close menu"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-darkpanel text-darktext transition-all duration-300 ${
-          collapsed ? 'lg:w-[78px]' : 'lg:w-[260px]'
-        } ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'} lg:translate-x-0`}
-      >
-        {/* Brand */}
-        <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-          <Link to={base} className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-accent text-white shadow-[0_4px_12px_rgba(193,89,46,0.45)]">
-              <ShieldCheck size={20} strokeWidth={2.4} />
-            </span>
-            <span
-              className={`font-display whitespace-nowrap text-[1.1rem] font-bold tracking-tight text-darktext ${
-                collapsed ? 'lg:hidden' : ''
-              }`}
-            >
-              MedHeritage
-            </span>
-          </Link>
-
-          <button
-            type="button"
-            onClick={onCloseMobile}
-            aria-label="Close menu"
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-darktext/50 transition-colors hover:bg-white/10 hover:text-darktext lg:hidden"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mx-5 mb-1 h-px bg-white/10" />
-
-        {/* Nav */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          <p
-            className={`mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-darktext/40 ${
-              collapsed ? 'lg:hidden' : ''
-            }`}
-          >
-            Main Menu
-          </p>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-5">
+        <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-body/50">
+          {role === 'admin' ? 'Admin Menu' : 'Menu'}
+        </p>
+        <div className="space-y-1">
           {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              onClick={onCloseMobile}
-              title={collapsed ? item.label : undefined}
+              onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] transition-all ${
+                `relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] transition-colors ${
                   isActive
-                    ? 'bg-accent font-semibold text-white shadow-[0_4px_14px_rgba(193,89,46,0.35)]'
-                    : 'font-medium text-darktext/55 hover:bg-white/5 hover:text-darktext'
-                } ${collapsed ? 'lg:justify-center lg:px-0' : ''}`
+                    ? 'bg-accent-soft font-semibold text-accent'
+                    : 'font-medium text-body hover:bg-bgsecondary hover:text-heading'
+                }`
               }
             >
-              <item.icon size={20} strokeWidth={2.1} className="shrink-0" />
-              <span className={`whitespace-nowrap ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent" />
+                  )}
+                  <item.icon size={19} strokeWidth={2.1} className="shrink-0" />
+                  <span className="whitespace-nowrap">{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
-        </nav>
-
-        {/* Footer */}
-        <div className="shrink-0 space-y-2 border-t border-white/10 p-3">
-          <div className={`flex items-center gap-3 rounded-xl bg-white/5 p-3 ${collapsed ? 'lg:hidden' : ''}`}>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-bold text-accent">
-              {initials}
-            </span>
-            <div className="min-w-0 leading-tight">
-              <p className="truncate text-[13.5px] font-semibold text-darktext">{user?.name}</p>
-              <p className="text-[11px] capitalize text-darktext/45">{role}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            title={collapsed ? 'Logout' : undefined}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-darktext/50 transition-colors hover:bg-white/10 hover:text-red-400 ${
-              collapsed ? 'lg:justify-center lg:px-0' : ''
-            }`}
-          >
-            <LogOut size={18} className="shrink-0" />
-            <span className={collapsed ? 'lg:hidden' : ''}>Logout</span>
-          </button>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            title={collapsed ? 'Expand' : 'Collapse'}
-            className={`hidden w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-darktext/50 transition-colors hover:bg-white/10 hover:text-darktext lg:flex ${
-              collapsed ? 'lg:justify-center lg:px-0' : ''
-            }`}
-          >
-            <ChevronsLeft size={18} className={`shrink-0 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
-            <span className={collapsed ? 'lg:hidden' : ''}>Collapse</span>
-          </button>
         </div>
-      </aside>
-    </>
+      </nav>
+
+      {/* Footer */}
+      <div className="shrink-0 space-y-2 border-t border-line p-3">
+        <div className="flex items-center gap-3 rounded-xl bg-bgprimary/80 p-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-white">
+            {getInitials(user?.name)}
+          </span>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-[13.5px] font-semibold text-heading">{user?.name}</p>
+            <p className="text-[11px] capitalize text-body">{role}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-body transition-colors hover:bg-red-50 hover:text-red-600"
+        >
+          <LogOut size={18} className="shrink-0" />
+          Logout
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -199,15 +174,9 @@ function TopNavbar({ base, onMenuClick }) {
   const role = user?.role || 'pharmacist';
   const title = getPageTitle(location.pathname, base);
 
-  const initials = (user?.name || 'U')
-    .split(' ')
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   const handleLogout = async () => {
     await dispatch(logout());
+    toast.success('Logged out successfully');
     navigate('/login', { replace: true });
   };
 
@@ -217,9 +186,9 @@ function TopNavbar({ base, onMenuClick }) {
         type="button"
         onClick={onMenuClick}
         aria-label="Open menu"
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-heading transition-colors hover:bg-bgsecondary lg:hidden"
+        className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-heading shadow-sm transition-colors hover:bg-bgsecondary"
       >
-        <Menu size={22} />
+        <Menu size={20} />
       </button>
 
       <div className="min-w-0">
@@ -277,7 +246,7 @@ function TopNavbar({ base, onMenuClick }) {
           className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 transition-colors hover:bg-bgsecondary"
         >
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-[12px] font-bold text-white">
-            {initials}
+            {getInitials(user?.name)}
           </span>
           <span className="hidden text-left sm:block">
             <span className="block max-w-[140px] truncate text-[13px] font-bold leading-tight text-heading">
@@ -318,8 +287,7 @@ function TopNavbar({ base, onMenuClick }) {
 export default function DashboardLayout() {
   const user = useSelector((state) => state.auth.user);
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const role = user?.role || 'pharmacist';
   const base = role === 'admin' ? '/admin' : '/pharmacist';
@@ -333,17 +301,24 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-bgprimary">
+      {/* backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <Sidebar
         base={base}
         role={role}
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed(!collapsed)}
-        mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
-      <div className={`transition-all duration-300 ${collapsed ? 'lg:pl-[78px]' : 'lg:pl-[260px]'}`}>
-        <TopNavbar base={base} onMenuClick={() => setMobileOpen(true)} />
-        <main className="mx-auto max-w-[1400px] p-4 sm:p-6 lg:p-8">
+
+      <div>
+        <TopNavbar base={base} onMenuClick={() => setSidebarOpen(true)} />
+        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

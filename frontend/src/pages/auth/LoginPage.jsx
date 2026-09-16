@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { login } from '../../features/authSlice.js';
 
 export default function LoginPage() {
@@ -16,7 +17,11 @@ export default function LoginPage() {
     e.preventDefault();
     const result = await dispatch(login({ email, password }));
     if (result.meta.requestStatus === 'fulfilled') {
+      const firstName = result.payload.user?.name?.split(' ')[0] || 'there';
+      toast.success(`Welcome back, ${firstName}!`);
       navigate(result.payload.user.role === 'admin' ? '/admin' : '/pharmacist');
+    } else {
+      toast.error(result.payload || error || 'Login failed');
     }
   };
 
