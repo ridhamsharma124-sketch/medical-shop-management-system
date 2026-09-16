@@ -35,6 +35,7 @@ import { createMedicineSchema, updateMedicineSchema } from '../validators/medici
 import { uploadMedicineForm } from '../middleware/upload.js';
 import { supplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
 import { getNotifications } from '../controllers/notificationController.js';
+import { createSalesBill } from '../controllers/salesController.js';
 
 
 const router = Router();
@@ -75,6 +76,8 @@ router.post('/customers', validate(customerSchema), createCustomer);
 router.get('/customers/:id', getCustomerById);
 router.put('/customers/:id', validate(updateCustomerSchema), updateCustomer);
 router.delete('/customers/:id', deleteCustomer);
+
+router.post('/sales-bills', createSalesBill);
 
 
 router.get("/notifications", getNotifications)

@@ -248,11 +248,13 @@ export const getPurchaseOrderById = catchAsync(async (req, res, next) => {
 });
 
 export const getAllPurchaseItems = catchAsync(async (req, res) => {
-  const { search, startDate, endDate, page = 1, limit = 10 } = req.query;
+  const { search, pharmacist, startDate, endDate, page = 1, limit = 10 } = req.query;
 
   const filter = {};
   if (req.user.role === 'pharmacist') {
     filter.pharmacist = req.user._id;
+  } else if (pharmacist) {
+    filter.pharmacist = pharmacist;
   }
 
   if (search) {
@@ -264,6 +266,8 @@ export const getAllPurchaseItems = catchAsync(async (req, res) => {
     };
     if (req.user.role === 'pharmacist') {
       medicineFilter.pharmacist = req.user._id;
+    } else if (pharmacist) {
+      medicineFilter.pharmacist = pharmacist;
     }
 
     const matchingMedicines = await Medicine.find(medicineFilter).select('_id');

@@ -43,6 +43,7 @@ import { createPharmacistSchema, updatePharmacistSchema } from '../validators/ph
 import { createMedicineSchema, updateMedicineSchema } from '../validators/medicineValidator.js';
 import { uploadMedicineForm } from '../middleware/upload.js';
 import { supplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
+import { createSalesBill, getBillHistory, getBillById } from '../controllers/salesController.js';
 
 const router = Router();
 
@@ -89,6 +90,10 @@ router.post('/customers', validate(customerSchema), createCustomer);
 router.get('/customers/:id', getCustomerById);
 router.put('/customers/:id', validate(updateCustomerSchema), updateCustomer);
 router.delete('/customers/:id', deleteCustomer);
+
+router.post('/sales-bills', createSalesBill);
+router.get('/sales-bills', getBillHistory);
+router.get('/sales-bills/:id', getBillById);
 
 
 router.get("/notifications", getNotifications)
