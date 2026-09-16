@@ -45,6 +45,7 @@ import { uploadMedicineForm } from '../middleware/upload.js';
 import { supplierSchema, updateSupplierSchema } from '../validators/supplierValidator.js';
 import { createSalesBill, getBillHistory, getBillById } from '../controllers/salesController.js';
 import { getSalesReport, getProfitReport, getPurchaseReport, getBestSellingMedicines, getProfitReportByPharmacist } from '../controllers/reportController.js';
+import { getDashboardSummary, getDashboardCharts } from '../controllers/dashboardController.js';
 
 const router = Router();
 
@@ -101,6 +102,9 @@ router.get('/reports/profit/by-pharmacist', getProfitReportByPharmacist);
 router.get('/reports/profit', getProfitReport);
 router.get('/reports/purchase', getPurchaseReport);
 router.get('/reports/best-selling', getBestSellingMedicines);
+
+router.get('/dashboard-summary', getDashboardSummary);
+router.get('/dashboard-charts', getDashboardCharts)
 
 router.get("/notifications", getNotifications)
 

@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import catchAsync from '../utils/catchAsync.js';
 import { signToken } from '../middleware/auth.js';
 import { sendOtpEmail } from '../utils/email.js';
+import createNotification from '../utils/createNotification.js';
 
 const OTP_EXPIRES_MIN = Number(process.env.OTP_EXPIRES_IN) || 10;
 
@@ -79,6 +80,14 @@ export const verifyOtp = catchAsync(async (req, res, next) => {
   });
 
   await record.deleteOne();
+
+   createNotification({
+    type: 'other',
+    title: 'New pharmacist signup',
+    message: `${user.name} (${user.email}) just registered as a pharmacist.`,
+    pharmacist: user._id,
+    relatedId: user._id,
+  });
 
   sendAuthResponse(user, 201, res);
 });

@@ -19,7 +19,7 @@ import {
   updateProfile,
   changePassword,
 } from '../controllers/profileController.js';
-import { adjustStock, getStockHistory } from '../controllers/inventoryController.js';
+import { adjustStock, getStockHistory, getMedicinesByStatus } from '../controllers/inventoryController.js';
 import { createPurchaseOrder, getSupplierPurchases, getPurchaseHistory, getPurchaseOrderById, getAllPurchaseItems } from '../controllers/PurchaseOrderController.js';
 import {
   createCustomer,
@@ -37,7 +37,7 @@ import { supplierSchema, updateSupplierSchema } from '../validators/supplierVali
 import { getNotifications } from '../controllers/notificationController.js';
 import { createSalesBill, getBillHistory, getBillById } from '../controllers/salesController.js';
 import { getSalesReport, getProfitReport, getPurchaseReport, getBestSellingMedicines } from '../controllers/reportController.js';
-
+import { getPharmacistDashboardSummary, getPharmacistDashboardCharts } from '../controllers/dashboardController.js';
 
 const router = Router();
 
@@ -57,6 +57,7 @@ router.delete('/medicines/:id', deleteMedicine);
 
 router.get('/inventory/stock-history', getStockHistory);
 router.patch('/inventory/:id/stock', adjustStock);
+router.get('/inventory/status', getMedicinesByStatus);
 
 
 router.get('/suppliers', getSuppliers);
@@ -86,6 +87,9 @@ router.get('/reports/sales', getSalesReport);
 router.get('/reports/profit', getProfitReport);
 router.get('/reports/purchase', getPurchaseReport);
 router.get('/reports/best-selling', getBestSellingMedicines);
+
+router.get('/dashboard-summary', getPharmacistDashboardSummary);
+router.get('/dashboard-charts', getPharmacistDashboardCharts)
 
 router.get("/notifications", getNotifications)
 
