@@ -49,8 +49,10 @@ const medicineSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Expiry date is required'],
       validate: {
-        validator: (v) => !v || v > Date.now() - 86400000,
-        message: 'Expiry date must be in the future',
+        validator: function (v) {
+          return !v || !this.manufacturingDate || v > this.manufacturingDate;
+        },
+        message: 'Expiry date must be after manufacturing date',
       },
     },
     sellingPrice: {

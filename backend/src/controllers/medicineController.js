@@ -206,6 +206,20 @@ export const updateMedicine = catchAsync(async (req, res, next) => {
     return next(new AppError('Medicine not found', 404));
   }
 
+  if (req.body.expiry) {
+    const manufacturingDate = req.body.manufacturingDate || oldMedicine.manufacturingDate;
+    if (manufacturingDate && new Date(req.body.expiry) <= new Date(manufacturingDate)) {
+      return next(new AppError('Expiry date must be after manufacturing date', 400));
+    }
+  }
+
+  if (req.body.manufacturingDate && !req.body.expiry) {
+    const expiry = oldMedicine.expiry;
+    if (expiry && new Date(expiry) <= new Date(req.body.manufacturingDate)) {
+      return next(new AppError('Expiry date must be after manufacturing date', 400));
+    }
+  }
+
   if (req.user.role === 'pharmacist') {
     delete req.body.pharmacist;
   }

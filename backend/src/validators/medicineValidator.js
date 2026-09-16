@@ -14,8 +14,10 @@ const baseFields = {
   unit: Joi.string()
     .valid(...units)
     .required(),
-  manufacturingDate: Joi.date().max('now').required(),
-  expiry: Joi.date().min('now').required(),
+  manufacturingDate: Joi.date().required(),
+  expiry: Joi.date().greater(Joi.ref('manufacturingDate')).required().messages({
+    'date.greater': 'Expiry date must be after manufacturing date',
+  }),
   sellingPrice: Joi.number().min(0).required(),
   purchasePrice: Joi.number().min(0).required(),
   gst: Joi.number().min(0).max(100).default(0),
@@ -38,8 +40,8 @@ export const updateMedicineSchema = Joi.object({
   company: Joi.string().trim().max(150),
   batch: Joi.string().trim().max(100),
   unit: Joi.string().valid(...units),
-  manufacturingDate: Joi.date().max('now'),
-  expiry: Joi.date().min('now'),
+  manufacturingDate: Joi.date(),
+  expiry: Joi.date(), 
   sellingPrice: Joi.number().min(0),
   purchasePrice: Joi.number().min(0),
   gst: Joi.number().min(0).max(100),
