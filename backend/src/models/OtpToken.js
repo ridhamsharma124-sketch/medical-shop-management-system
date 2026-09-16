@@ -4,8 +4,10 @@ const otpTokenSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Name is required'],
       trim: true,
+      required: function () {
+        return this.purpose === 'register';
+      },
     },
     email: {
       type: String,
@@ -16,13 +18,17 @@ const otpTokenSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: [true, 'Phone number is required'],
       trim: true,
+      required: function () {
+        return this.purpose === 'register';
+      },
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
       select: false,
+      required: function () {
+        return this.purpose === 'register';
+      },
     },
     otp: {
       type: String,
@@ -32,10 +38,20 @@ const otpTokenSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Expiry is required'],
     },
+    purpose: {
+      type: String,
+      enum: ['register', 'reset'],
+      default: 'register',
+    },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
 
 otpTokenSchema.index({ email: 1, otp: 1 });
+otpTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model('OtpToken', otpTokenSchema);

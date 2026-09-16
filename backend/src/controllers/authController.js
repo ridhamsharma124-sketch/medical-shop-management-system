@@ -5,7 +5,7 @@ import OtpToken from '../models/OtpToken.js';
 import { AppError } from '../middleware/errorHandler.js';
 import catchAsync from '../utils/catchAsync.js';
 import { signToken } from '../middleware/auth.js';
-import { sendOtpEmail } from '../utils/email.js';
+import { sendOtpEmail, sendPasswordResetOtpEmail } from '../utils/email.js';
 import createNotification from '../utils/createNotification.js';
 
 const OTP_EXPIRES_MIN = Number(process.env.OTP_EXPIRES_IN) || 10;
@@ -13,7 +13,7 @@ const OTP_EXPIRES_MIN = Number(process.env.OTP_EXPIRES_IN) || 10;
 const cookieOptions = {
   httpOnly: true,
   sameSite: 'lax',
-  secure: process.env.NODE_ENV === 'production',
+  secure: false,
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -42,7 +42,7 @@ export const register = catchAsync(async (req, res, next) => {
 
   const otp = generateOtp();
 
-  await OtpToken.deleteMany({ email });
+  await OtpToken.deleteMany({ email, purpose: 'register' });
 
   await OtpToken.create({
     name,
@@ -64,7 +64,7 @@ export const register = catchAsync(async (req, res, next) => {
 export const verifyOtp = catchAsync(async (req, res, next) => {
   const { email, otp } = req.body;
 
-  const record = await OtpToken.findOne({ email, otp }).select('+password');
+  const record = await OtpToken.findOne({ email, otp, purpose: 'register' }).select('+password');
 
   if (!record || record.expiresAt < new Date()) {
     if (record) await record.deleteOne();
@@ -95,7 +95,7 @@ export const verifyOtp = catchAsync(async (req, res, next) => {
 export const resendOtp = catchAsync(async (req, res, next) => {
   const { email } = req.body;
 
-  const record = await OtpToken.findOne({ email });
+  const record = await OtpToken.findOne({ email, purpose: 'register' });
 
   if (!record) {
     return next(new AppError('No pending registration found. Please register again.', 400));
@@ -134,4 +134,86 @@ export const logout = catchAsync(async (req, res) => {
     expires: new Date(Date.now() + 10 * 1000),
   });
   res.status(200).json({ success: true, message: 'Logged out successfully' });
+});
+
+export const forgotPassword = catchAsync(async (req, res, next) => {
+  const { step, email, otp, newPassword } = req.body;
+
+  if (!step || !['send', 'verify', 'reset'].includes(step)) {
+    return next(new AppError('step must be one of: send, verify, reset', 400));
+  }
+
+  if (!email) {
+    return next(new AppError('Email is required', 400));
+  }
+
+  // ---- Step 1: send OTP ----
+  if (step === 'send') {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return next(new AppError('No account found with this email', 404));
+    }
+
+    const generatedOtp = generateOtp();
+
+    await OtpToken.deleteMany({ email, purpose: 'reset' });
+
+    await OtpToken.create({
+      email,
+      otp: generatedOtp,
+      purpose: 'reset',
+      expiresAt: new Date(Date.now() + OTP_EXPIRES_MIN * 60 * 1000),
+    });
+
+    await sendPasswordResetOtpEmail(email, generatedOtp, OTP_EXPIRES_MIN);
+
+    return res.status(200).json({ success: true, message: `OTP sent to ${email}` });
+  }
+
+  // ---- Step 2: verify OTP ----
+  if (step === 'verify') {
+    if (!otp) {
+      return next(new AppError('OTP is required', 400));
+    }
+
+    const record = await OtpToken.findOne({ email, otp, purpose: 'reset' });
+
+    if (!record || record.expiresAt < new Date()) {
+      if (record) await record.deleteOne();
+      return next(new AppError('Invalid or expired OTP', 400));
+    }
+
+    record.verified = true;
+    await record.save();
+
+    return res.status(200).json({ success: true, message: 'OTP verified successfully' });
+  }
+
+  // ---- Step 3: reset password ----
+  if (step === 'reset') {
+    if (!newPassword) {
+      return next(new AppError('New password is required', 400));
+    }
+
+    if (newPassword.length < 6) {
+      return next(new AppError('New password must be at least 6 characters', 400));
+    }
+
+    const record = await OtpToken.findOne({ email, purpose: 'reset', verified: true });
+    if (!record) {
+      return next(new AppError('OTP verification required before resetting password', 400));
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return next(new AppError('No account found with this email', 404));
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    await record.deleteOne();
+
+    return res.status(200).json({ success: true, message: 'Password reset successfully' });
+  }
 });
