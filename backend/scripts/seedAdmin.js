@@ -1,8 +1,11 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import connectDB from '../src/config/db.js';
 import User from '../src/models/User.js';
 
-dotenv.config({ quiet: true });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME, ADMIN_PHONE } = process.env;
 

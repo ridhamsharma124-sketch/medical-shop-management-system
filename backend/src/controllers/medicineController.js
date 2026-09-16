@@ -91,8 +91,14 @@ export const getAllMedicines = catchAsync(async (req, res) => {
   const p = Math.max(Number(page) || 1, 1);
   const l = Math.min(Math.max(Number(limit) || 50, 1), 200);
 
+  let query2 = Medicine.find(query).sort(sortBy).skip((p - 1) * l).limit(l);
+
+  if (req.user.role === 'admin') {
+    query2 = query2.populate('pharmacist', 'name email');
+  }
+
   const [data, total] = await Promise.all([
-    Medicine.find(query).sort(sortBy).skip((p - 1) * l).limit(l),
+    query2,
     Medicine.countDocuments(query),
   ]);
 
@@ -112,7 +118,13 @@ export const getMedicineById = catchAsync(async (req, res, next) => {
       ? { _id: req.params.id, pharmacist: req.user._id }
       : { _id: req.params.id };
 
-  const medicine = await Medicine.findOne(filter);
+   let query = Medicine.findOne(filter);
+
+  if (req.user.role === 'admin') {
+    query = query.populate('pharmacist', 'name email');
+  }
+
+  const medicine = await query;
   if (!medicine) {
     return next(new AppError('Medicine not found', 404));
   }
