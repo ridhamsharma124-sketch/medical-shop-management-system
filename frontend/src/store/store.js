@@ -7,6 +7,10 @@ import inventoryReducer from '../features/inventorySlice';
 import profileReducer from '../features/profileSlice';
 import customerReducer from '../features/customerSlice';
 import purchaseReducer from '../features/purchaseSlice';
+import salesReducer from '../features/salesSlice';
+import reportReducer from '../features/reportSlice';
+import dashboardReducer from '../features/dashboardSlice';
+import notificationReducer from '../features/notificationSlice';
 
 export const store = configureStore({
   reducer: {
@@ -18,5 +22,9 @@ export const store = configureStore({
     profile: profileReducer,
     customers: customerReducer,
     purchases: purchaseReducer,
+    sales: salesReducer,
+    reports: reportReducer,
+    dashboard: dashboardReducer,
+    notifications: notificationReducer,
   },
 });

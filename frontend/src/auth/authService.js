@@ -40,3 +40,10 @@ export const logout = async () => {
   const response = await api.post(authRoutes.LOGOUT);
   return response;
 };
+
+// FORGOT PASSWORD (3 steps: send / verify / reset)
+// POST /auth/forgot-password
+export const forgotPassword = async (payload) => {
+  const response = await api.post(authRoutes.FORGOT_PASSWORD, payload);
+  return response;
+};

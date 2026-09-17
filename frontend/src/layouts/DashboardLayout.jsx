@@ -15,18 +15,27 @@ import {
   UserCog,
   UserCircle,
   ShoppingCart,
+  ReceiptText,
+  BarChart3,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { logout } from '../features/authSlice';
+import { fetchNotificationsList } from '../features/notificationSlice';
+import { notificationMeta, timeAgo, getUnreadCount, notificationDetail } from '../components/notifications/notificationHelpers';
 
 const NAV_ITEMS = (base) => [
   { to: base, label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'pharmacist'], end: true },
+
   { to: `${base}/medicines`, label: 'Medicine Management', icon: FlaskConical, roles: ['admin', 'pharmacist'] },
   { to: `${base}/pharmacists`, label: 'Pharmacist Management', icon: UserCog, roles: ['admin'] },
   { to: `${base}/suppliers`, label: 'Supplier Management', icon: Truck, roles: ['admin', 'pharmacist'] },
   { to: `${base}/purchases`, label: 'Purchase Orders', icon: ShoppingCart, roles: ['admin', 'pharmacist'] },
   { to: `${base}/inventory`, label: 'Inventory Management', icon: Archive, roles: ['admin', 'pharmacist'] },
   { to: `${base}/customers`, label: 'Customer Management', icon: Users, roles: ['admin', 'pharmacist'] },
+    { to: `${base}/billing`, label: 'Billing & Sales', icon: ReceiptText, roles: ['admin', 'pharmacist'] },
+  { to: `${base}/reports`, label: 'Reports', icon: BarChart3, roles: ['admin', 'pharmacist'] },
+  { to: `${base}/notifications`, label: 'Notifications', icon: Bell, roles: ['admin', 'pharmacist'] },
   { to: `${base}/profile`, label: 'My Profile', icon: UserCircle, roles: ['admin', 'pharmacist'] },
 ];
 
@@ -148,10 +157,19 @@ function TopNavbar({ base, onMenuClick }) {
   const dispatch = useDispatch();
   const location = useLocation();
   const user = useSelector((state) => state.auth.user);
+  const notifications = useSelector((state) => state.notifications.items);
+  const notifTotal = useSelector((state) => state.notifications.total);
+  const notifLoading = useSelector((state) => state.notifications.loading);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const menuRef = useRef(null);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    if (user?.role) {
+      dispatch(fetchNotificationsList({ role: user.role, params: { limit: 8 } }));
+    }
+  }, [dispatch, user?.role]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -208,30 +226,82 @@ function TopNavbar({ base, onMenuClick }) {
             setNotifOpen(!notifOpen);
             setMenuOpen(false);
           }}
-          className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+          className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
             notifOpen ? 'bg-bgsecondary text-accent' : 'text-body hover:bg-bgsecondary hover:text-accent'
           }`}
         >
           <Bell size={19} />
+          {getUnreadCount(notifications, user?.role) > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-none text-white shadow-sm">
+              {notifTotal > 99 ? '99+' : getUnreadCount(notifications, user?.role)}
+            </span>
+          )}
         </button>
         {notifOpen && (
-          <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-xl">
-            <p className="border-b border-line px-4 py-3 text-[12px] font-bold uppercase tracking-wider text-body">
-              Notifications
-            </p>
-            <div className="px-4 py-8 text-center">
-              <Bell size={22} className="mx-auto mb-2 text-body/40" />
-              <p className="text-[12.5px] text-body">No notifications yet</p>
+          <div className="absolute right-0 z-50 mt-2 w-[320px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="text-[12.5px] font-bold uppercase tracking-wider text-heading">
+                Notifications
+              </p>
+              <Link
+                to={`${base}/notifications`}
+                onClick={() => setNotifOpen(false)}
+                className="text-[11.5px] font-bold text-accent transition-colors hover:underline"
+              >
+                View all
+              </Link>
             </div>
-            <Link
-              to={`${base}/notifications`}
-              onClick={() => setNotifOpen(false)}
-              className="block w-full px-4 py-2.5 text-center text-[12px] font-bold text-accent transition-colors hover:bg-bgsecondary"
-            >
-              View All
-            </Link>
+            {notifLoading && notifications.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 px-4 py-8 text-[12.5px] text-body">
+                <Loader2 size={16} className="animate-spin text-body/50" />
+                Loading…
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <Bell size={22} className="mx-auto mb-2 text-body/40" />
+                <p className="text-[12.5px] text-body">No notifications yet</p>
+              </div>
+            ) : (
+              <ul className="max-h-[320px] divide-y divide-line overflow-y-auto">
+                {notifications.map((n) => {
+                  const meta = notificationMeta(n.type);
+                  const detail = notificationDetail(n);
+                  const Icon = meta.icon;
+                  return (
+                    <li key={n._id}>
+                      <Link
+                        to={`${base}/notifications`}
+                        onClick={() => setNotifOpen(false)}
+                        className="flex gap-3 px-4 py-3 transition-colors hover:bg-bgprimary/60"
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${meta.toneClass}`}
+                        >
+                          <Icon size={14} strokeWidth={2.2} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-[12.5px] font-bold text-heading">{n.title}</p>
+                            {detail.badge && (
+                              <span
+                                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${detail.tone}`}
+                              >
+                                {detail.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-body">{n.message}</p>
+                          <p className="mt-0.5 text-[10px] text-body/70">{timeAgo(n.createdAt)}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+)}
           </div>
         )}
+
       </div>
 
       <div className="hidden h-6 w-px bg-line sm:block" />
@@ -289,11 +359,17 @@ export default function DashboardLayout() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
   const role = user?.role || 'pharmacist';
   const base = role === 'admin' ? '/admin' : '/pharmacist';
 
   const items = NAV_ITEMS(base).filter((i) => i.roles.includes(role));
-  const isAllowed = items.some((i) => matchesItem(i, location.pathname));
+  const isAllowed =
+    items.some((i) => matchesItem(i, location.pathname)) ||
+    location.pathname === `${base}/notifications`;
 
   if (!isAllowed) {
     return <Navigate to={base} replace />;

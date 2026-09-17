@@ -1,13 +1,15 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
-
-const data = [
-  { name: 'Antibiotics', value: 32, color: 'var(--color-accent)' },
-  { name: 'Painkillers', value: 24, color: 'var(--color-mustard)' },
-  { name: 'Vitamins & Supplements', value: 19, color: 'var(--color-olive)' },
-  { name: 'Diabetic Care', value: 15, color: 'var(--color-teal)' },
-  { name: 'Others', value: 10, color: 'var(--color-berry)' },
+const COLORS = [
+  'var(--color-accent)',
+  'var(--color-mustard)',
+  'var(--color-olive)',
+  'var(--color-teal)',
+  'var(--color-berry)',
+  '#8A5A9E',
 ];
+
+const inr = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
@@ -18,21 +20,41 @@ const CustomTooltip = ({ active, payload }) => {
         <span className="h-2 w-2 rounded-full" style={{ background: d.payload.color }} />
         <span className="text-[12px] font-semibold text-heading">{d.name}</span>
       </div>
-      <p className="mt-1 font-display text-[14px] font-bold text-accent">{d.value}% share</p>
+      <p className="mt-1 font-display text-[14px] font-bold text-accent">
+        {d.value.toFixed(1)}% · {inr(d.payload.saleAmount)}
+      </p>
     </div>
   );
 };
 
-export default function CategoryChart() {
-  const total = data.reduce((s, d) => s + d.value, 0);
+export default function CategoryChart({ data = [] }) {
+  const total = data.reduce((s, d) => s + (Number(d.saleAmount) || 0), 0);
+
+  const chartData = data
+    .map((d, i) => ({
+      name: d.category || 'Others',
+      saleAmount: Number(d.saleAmount) || 0,
+      value: total > 0 ? ((Number(d.saleAmount) || 0) / total) * 100 : 0,
+      color: COLORS[i % COLORS.length],
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  if (!chartData.length) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center rounded-lgx border border-dashed border-line bg-bgprimary/40">
+        <p className="text-[13px] text-body/70">No category sales yet</p>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="relative mx-auto h-[185px] w-full max-w-[240px]">
+    <div className="flex min-h-0 flex-1 flex-col justify-between gap-4">
+      <div className="relative mx-auto w-full max-w-[240px]" style={{ height: 'min(240px, 100%)' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               dataKey="value"
               nameKey="name"
               innerRadius={58}
@@ -41,7 +63,7 @@ export default function CategoryChart() {
               stroke="none"
               cornerRadius={6}
             >
-              {data.map((d) => (
+              {chartData.map((d) => (
                 <Cell key={d.name} fill={d.color} />
               ))}
             </Pie>
@@ -49,15 +71,17 @@ export default function CategoryChart() {
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display text-[26px] font-bold text-heading">{total}%</span>
+          <span className="font-display text-[26px] font-bold text-heading">
+            {Math.round(chartData[0].value)}%
+          </span>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-body">
-            All sales
+            {chartData[0].name}
           </span>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-2.5">
-        {data.map((d) => (
+      <div className="flex flex-col gap-2.5">
+        {chartData.map((d) => (
           <div key={d.name} className="group flex items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-2.5">
               <span
@@ -73,8 +97,8 @@ export default function CategoryChart() {
                   style={{ width: `${d.value}%`, background: d.color }}
                 />
               </span>
-              <span className="w-8 text-right font-display text-[14px] font-bold text-body">
-                {d.value}%
+              <span className="w-16 text-right font-display text-[13px] font-bold text-body">
+                {d.value.toFixed(1)}%
               </span>
             </span>
           </div>

@@ -4,6 +4,7 @@ export const authRoutes = {
   RESEND_OTP: '/auth/resend-otp',
   LOGIN: '/auth/login',
   LOGOUT: '/auth/logout',
+  FORGOT_PASSWORD: '/auth/forgot-password',
 };
 
 export const medicineRoutes = {
@@ -107,5 +108,54 @@ export const purchaseRoutes = {
     PURCHASE_DETAILS: (id) => `/pharmacist/purchase-orders/${id}`,
     SUPPLIER_PURCHASES: (supplierId) => `/pharmacist/suppliers/${supplierId}/purchases`,
     PURCHASE_ITEMS: '/pharmacist/purchase-items',
+  },
+};
+
+export const salesRoutes = {
+  ADMIN: {
+    SALES_BILL_CREATE: '/admin/sales-bills',
+    SALES_BILL_GET_ALL: '/admin/sales-bills',
+    SALES_BILL_DETAILS: (id) => `/admin/sales-bills/${id}`,
+  },
+  PHARMACIST: {
+    SALES_BILL_CREATE: '/pharmacist/sales-bills',
+    SALES_BILL_GET_ALL: '/pharmacist/sales-bills',
+    SALES_BILL_DETAILS: (id) => `/pharmacist/sales-bills/${id}`,
+  },
+};
+
+export const dashboardRoutes = {
+  ADMIN: {
+    SUMMARY: '/admin/dashboard-summary',
+    CHARTS: '/admin/dashboard-charts',
+  },
+  PHARMACIST: {
+    SUMMARY: '/pharmacist/dashboard-summary',
+    CHARTS: '/pharmacist/dashboard-charts',
+  },
+};
+
+export const reportRoutes = {
+  ADMIN: {
+    REPORT_SALES: '/admin/reports/sales',
+    REPORT_PROFIT: '/admin/reports/profit',
+    REPORT_PROFIT_BY_PHARMACIST: '/admin/reports/profit/by-pharmacist',
+    REPORT_PURCHASE: '/admin/reports/purchase',
+    REPORT_BEST_SELLING: '/admin/reports/best-selling',
+  },
+  PHARMACIST: {
+    REPORT_SALES: '/pharmacist/reports/sales',
+    REPORT_PROFIT: '/pharmacist/reports/profit',
+    REPORT_PURCHASE: '/pharmacist/reports/purchase',
+    REPORT_BEST_SELLING: '/pharmacist/reports/best-selling',
+  },
+};
+
+export const notificationRoutes = {
+  ADMIN: {
+    NOTIFICATIONS: '/admin/notifications',
+  },
+  PHARMACIST: {
+    NOTIFICATIONS: '/pharmacist/notifications',
   },
 };

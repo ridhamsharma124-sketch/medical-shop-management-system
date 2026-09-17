@@ -9,6 +9,7 @@ import Contact from './pages/landing-page/Contact';
 import Footer from './pages/landing-page/Footer';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import DashboardLayout from './layouts/DashboardLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import MedicinesPage from './pages/admin/MedicinesPage';
@@ -25,6 +26,9 @@ import PharmacistSuppliersPage from './pages/pharmacists/SuppliersPage';
 import PharmacistCustomersPage from './pages/pharmacists/CustomersPage';
 import PharmacistPurchasesPage from './pages/pharmacists/PurchasesPage';
 import PharmacistProfilePage from './pages/pharmacists/ProfilePage';
+import BillingPage from './pages/BillingPage';
+import ReportsPage from './pages/ReportsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import './App.css';
 
 function LandingPage() {
@@ -82,6 +86,7 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/admin" element={<DashboardLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="medicines" element={<MedicinesPage />} />
@@ -91,6 +96,9 @@ export default function App() {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="purchases" element={<PurchasesPage />} />
+          <Route path="billing" element={<BillingPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
         </Route>
         <Route path="/pharmacist" element={<DashboardLayout />}>
           <Route index element={<PharmacistDashboard />} />
@@ -99,7 +107,10 @@ export default function App() {
           <Route path="suppliers" element={<PharmacistSuppliersPage />} />
           <Route path="customers" element={<PharmacistCustomersPage />} />
           <Route path="purchases" element={<PharmacistPurchasesPage />} />
+          <Route path="billing" element={<BillingPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="profile" element={<PharmacistProfilePage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

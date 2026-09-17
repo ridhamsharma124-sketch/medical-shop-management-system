@@ -10,7 +10,7 @@ export default function CardPanel({ title, subtitle, icon: Icon, tone = 'accent'
   const iconTone = tones[tone] || tones.accent;
 
   return (
-    <div className={`card-hover overflow-hidden rounded-lgx border border-line bg-surface shadow-card ${className}`}>
+    <div className={`card-hover flex flex-col overflow-hidden rounded-lgx border border-line bg-surface shadow-card ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-line bg-bgsecondary/50 px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconTone}`}>
@@ -23,7 +23,7 @@ export default function CardPanel({ title, subtitle, icon: Icon, tone = 'accent'
         </div>
         {right}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col p-5">{children}</div>
     </div>
   );
 }
