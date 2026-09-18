@@ -12,16 +12,17 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Check,
   Pill,
   AlertTriangle,
   Filter,
-  RotateCcw,
   ImagePlus,
   Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fetchMedicinesList, fetchMedicineDetail, searchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
+import CustomSelect from '../../components/ui/CustomSelect';
 
 const allCategories = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops'];
 const allUnits = ['strip', 'tablet', 'bottle', 'box', 'vial', 'sachet'];
@@ -79,10 +80,14 @@ export default function MedicinesPage() {
   const displayError = loadError && !errorDismissed ? loadError : '';
   const [search, setSearch] = useState('');
   const [searchingFor, setSearchingFor] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [companyFilter, setCompanyFilter] = useState('All');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [companyDraft, setCompanyDraft] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef(null);
+  const [gstOpen, setGstOpen] = useState(false);
+  const gstRef = useRef(null);
   const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(null);
@@ -119,22 +124,30 @@ export default function MedicinesPage() {
   }, [search, role, dispatch]);
 
   useEffect(() => {
-    if (!filterOpen) return undefined;
+    if (!filterOpen && !gstOpen) return undefined;
     const handler = (e) => {
       if (filterRef.current && !filterRef.current.contains(e.target)) setFilterOpen(false);
+      if (gstRef.current && !gstRef.current.contains(e.target)) setGstOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [filterOpen]);
+  }, [filterOpen, gstOpen]);
 
-  const allCompanies = ['All', ...new Set(medicines.map((m) => m.company).filter(Boolean))];
+  const activeFilterCount = (categoryFilter ? 1 : 0) + (companyFilter ? 1 : 0);
 
-  const activeFilterCount = (categoryFilter !== 'All' ? 1 : 0) + (companyFilter !== 'All' ? 1 : 0);
+  const toggleFilter = () => {
+    if (!filterOpen) {
+      setCategoryDraft(categoryFilter);
+      setCompanyDraft(companyFilter);
+    }
+    setFilterOpen(!filterOpen);
+  };
 
-  const resetFilters = () => {
-    setCategoryFilter('All');
-    setCompanyFilter('All');
+  const applyFilters = () => {
+    setCategoryFilter(categoryDraft.trim());
+    setCompanyFilter(companyDraft.trim());
     setPage(1);
+    setFilterOpen(false);
   };
 
   const filtered = useMemo(() => {
@@ -143,12 +156,12 @@ export default function MedicinesPage() {
     const base = isSearching ? searchResults : medicines;
     let list = [...base];
 
-    if (categoryFilter !== 'All') {
-      list = list.filter((m) => m.category === categoryFilter);
+    if (categoryFilter) {
+      list = list.filter((m) => (m.category || '').toLowerCase().includes(categoryFilter.toLowerCase()));
     }
 
-    if (companyFilter !== 'All') {
-      list = list.filter((m) => m.company === companyFilter);
+    if (companyFilter) {
+      list = list.filter((m) => (m.company || '').toLowerCase().includes(companyFilter.toLowerCase()));
     }
 
     const sortMap = {
@@ -345,7 +358,7 @@ export default function MedicinesPage() {
         {/* Filter popover */}
         <div className="relative" ref={filterRef}>
           <button
-            onClick={() => setFilterOpen(!filterOpen)}
+            onClick={toggleFilter}
             className={`inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[14px] font-semibold transition-colors ${
               filterOpen || activeFilterCount > 0
                 ? 'border-accent bg-accent-soft text-accent'
@@ -364,44 +377,31 @@ export default function MedicinesPage() {
 
           {filterOpen && (
             <div className="absolute right-0 z-50 mt-2 w-[280px] rounded-xl border border-line bg-surface p-4 shadow-xl">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-body">Filter Medicines</p>
-
               <div className="mb-3">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  <option value="All">All Categories</option>
-                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <input
+                  type="text"
+                  value={categoryDraft}
+                  onChange={(e) => setCategoryDraft(e.target.value)}
+                  placeholder="Type to filter category..."
+                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                />
               </div>
 
               <div className="mb-3">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Company</label>
-                <select
-                  value={companyFilter}
-                  onChange={(e) => { setCompanyFilter(e.target.value); setPage(1); }}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  {allCompanies.map((c) => (
-                    <option key={c} value={c}>{c === 'All' ? 'All Companies' : c}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={companyDraft}
+                  onChange={(e) => setCompanyDraft(e.target.value)}
+                  placeholder="Type to filter company..."
+                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
+              <div className="flex justify-end border-t border-line pt-3">
                 <button
-                  onClick={resetFilters}
-                  disabled={activeFilterCount === 0}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold text-heading transition-colors hover:bg-bgsecondary disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <RotateCcw size={14} />
-                  Reset
-                </button>
-                <button
-                  onClick={() => setFilterOpen(false)}
+                  onClick={applyFilters}
                   className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-hover"
                 >
                   Apply
@@ -411,17 +411,17 @@ export default function MedicinesPage() {
           )}
         </div>
 
-        <select
+        <CustomSelect
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          className="h-10 rounded-lg border border-line bg-surface px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-        >
-          <option value="newest">Expiry: Newest</option>
-          <option value="oldest">Expiry: Oldest</option>
-          <option value="name">Name</option>
-          <option value="price">Price: High to Low</option>
-          <option value="stock">Stock: Low to High</option>
-        </select>
+          onChange={setSort}
+          options={[
+            { value: 'newest', label: 'Expiry: Newest' },
+            { value: 'oldest', label: 'Expiry: Oldest' },
+            { value: 'name', label: 'Name' },
+            { value: 'price', label: 'Price: High to Low' },
+            { value: 'stock', label: 'Stock: Low to High' },
+          ]}
+        />
       </div>
 
       {/* Table */}
@@ -584,9 +584,12 @@ export default function MedicinesPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category *</label>
-                <select value={form.category} onChange={(e) => setField('category', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <CustomSelect
+                    value={form.category}
+                    onChange={(v) => setField('category', v)}
+                    options={allCategories.map((c) => ({ value: c, label: c }))}
+                    placeholder="Select category"
+                  />
               </div>
 
               <div>
@@ -601,9 +604,12 @@ export default function MedicinesPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Unit *</label>
-                <select value={form.unit} onChange={(e) => setField('unit', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {allUnits.map((u) => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
-                </select>
+                <CustomSelect
+                    value={form.unit}
+                    onChange={(v) => setField('unit', v)}
+                    options={allUnits.map((u) => ({ value: u, label: u.charAt(0).toUpperCase() + u.slice(1) }))}
+                    placeholder="Select unit"
+                  />
               </div>
 
               <div>
@@ -626,9 +632,31 @@ export default function MedicinesPage() {
                 <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setField('purchasePrice', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
               </div>
 
-              <div>
+              <div className="relative" ref={gstRef}>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">GST (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={form.gst} onChange={(e) => setField('gst', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+                <button
+                  type="button"
+                  onClick={() => setGstOpen((o) => !o)}
+                  className="flex h-10 w-full items-center justify-between rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                >
+                  <span>{Number(form.gst) || 0}%</span>
+                  <ChevronDown size={16} className={`text-body transition-transform ${gstOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {gstOpen && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1.5 rounded-lg border border-line bg-surface p-1.5 shadow-xl">
+                    {[0, 5, 12, 18, 28].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => { setField('gst', String(g)); setGstOpen(false); }}
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-[14px] transition-colors hover:bg-bgsecondary ${Number(form.gst) === g ? 'font-semibold text-accent' : 'text-heading'}`}
+                      >
+                        {g}%
+                        {Number(form.gst) === g && <Check size={15} className="text-accent" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -644,10 +672,12 @@ export default function MedicinesPage() {
               {role === 'admin' && (
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
-                  <select value={form.pharmacist} onChange={(e) => setField('pharmacist', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                    <option value="">Select pharmacist...</option>
-                    {pharmacists.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.email})</option>)}
-                  </select>
+                  <CustomSelect
+                    value={form.pharmacist}
+                    onChange={(v) => setField('pharmacist', v)}
+                    options={pharmacists.map((p) => ({ value: p._id, label: `${p.name} (${p.email})` }))}
+                    placeholder="Select pharmacist..."
+                  />
                 </div>
               )}
 

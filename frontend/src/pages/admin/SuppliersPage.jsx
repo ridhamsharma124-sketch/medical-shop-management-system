@@ -22,6 +22,7 @@ import { fetchSuppliersList, fetchSupplierDetail, createNewSupplier, updateExist
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 import { fetchSupplierPurchasesList, clearSupplierPurchases } from '../../features/purchaseSlice';
 import { ShoppingCart, Loader2 } from 'lucide-react';
+import CustomSelect from '../../components/ui/CustomSelect';
 
 const emptySupplier = {
   name: '', contactNumber: '', email: '', address: '', gstNumber: '', pharmacistId: '',
@@ -534,16 +535,12 @@ export default function SuppliersPage() {
               {role === 'admin' && (
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
-                <select
+                <CustomSelect
                   value={form.pharmacistId}
-                  onChange={(e) => setField('pharmacistId', e.target.value)}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  <option value="">Select pharmacist</option>
-                  {pharmacists.map((p) => (
-                    <option key={p._id} value={p._id}>{p.name}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setField('pharmacistId', v)}
+                  options={pharmacists.map((p) => ({ value: p._id, label: p.name }))}
+                  placeholder="Select pharmacist"
+                />
               </div>
             )}
 

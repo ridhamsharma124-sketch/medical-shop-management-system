@@ -111,6 +111,10 @@ export default function PharmacistsPage() {
       setFormError('Name, Email and Phone are required');
       return;
     }
+    if (!/^\+?[0-9]{10,15}$/.test(form.phone.trim())) {
+      toast.error('Phone number must be 10-15 digits');
+      return;
+    }
     if (showModal === 'add' && !form.password) {
       setFormError('Password is required for a new pharmacist');
       return;

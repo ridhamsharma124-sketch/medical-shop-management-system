@@ -12,11 +12,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Check,
   Pill,
   AlertTriangle,
   Filter,
-  RotateCcw,
-  Download,
+  FileDown,
+  Sheet,
   Package,
   PackageX,
   AlarmClock,
@@ -27,10 +28,16 @@ import {
   ArrowUpDown,
   ArrowDownRight,
   ArrowUpRight,
+  Loader2,
+  Minus,
+  GripVertical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { fetchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
+import { fetchMedicinesList, fetchMedicineDetail, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
 import { adjustStock, fetchStockHistory, fetchMedicinesByStatus } from '../../features/inventorySlice';
+import { fetchAllPharmacists } from '../../features/pharmacistSlice';
+import { exportTablePdf, exportExcel } from '../../utils/exportUtils';
+import CustomSelect from '../../components/ui/CustomSelect';
 
 const statusMap = { low: 'low', out: 'outOfStock', expiring: 'nearExpiry', expired: 'expired' };
 
@@ -52,6 +59,7 @@ const emptyMedicine = {
   stock: '0',
   lowStockThreshold: '10',
   description: '',
+  pharmacist: '',
 };
 
 function getStatus(stock, threshold) {
@@ -102,17 +110,22 @@ export default function InventoryPage() {
   const dispatch = useDispatch();
   const [errorDismissed, setErrorDismissed] = useState(false);
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [companyFilter, setCompanyFilter] = useState('All');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [companyDraft, setCompanyDraft] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef(null);
+  const [gstOpen, setGstOpen] = useState(false);
+  const gstRef = useRef(null);
   const [sort, setSort] = useState('newest');
   const [stockFilter, setStockFilter] = useState(() => {
     const valid = ['all', 'low', 'out', 'expiring', 'expired'];
     const f = searchParams.get('filter');
     return f && valid.includes(f) ? f : 'all';
   });
-  const { items: medicinesAll, loading, error: loadError } = useSelector((state) => state.medicines);
+  const { items: medicinesAll, loading, error: loadError, viewItem, viewLoading, viewError } = useSelector((state) => state.medicines);
+  const { items: pharmacists } = useSelector((state) => state.pharmacists);
   const { statusItems, statusLoading, statusError, historyLogs, historyLoading, historyError, adjusting } = useSelector((state) => state.inventory);
   const activeStatus = stockFilter !== 'all';
   const medicines = activeStatus ? statusItems : medicinesAll;
@@ -133,6 +146,31 @@ export default function InventoryPage() {
   const [adjustForm, setAdjustForm] = useState({ type: 'increase', quantity: '', reason: '', note: '' });
   const [adjustError, setAdjustError] = useState('');
 
+  const [adjustPos, setAdjustPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const adjustDrag = useRef(null);
+
+  const moveAdjustDrag = (e) => {
+    const d = adjustDrag.current;
+    if (!d) return;
+    setAdjustPos({ x: d.offX + (e.clientX - d.startX), y: d.offY + (e.clientY - d.startY) });
+  };
+  const endAdjustDrag = () => {
+    adjustDrag.current = null;
+    setDragging(false);
+    window.removeEventListener('mousemove', moveAdjustDrag);
+    window.removeEventListener('mouseup', endAdjustDrag);
+  };
+  const startAdjustDrag = (e) => {
+    if (e.button !== 0 || (e.target.closest && e.target.closest('button'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    adjustDrag.current = { startX: e.clientX, startY: e.clientY, offX: adjustPos.x, offY: adjustPos.y };
+    window.addEventListener('mousemove', moveAdjustDrag);
+    window.addEventListener('mouseup', endAdjustDrag);
+  };
+
   const loadData = useCallback(() => {
     if (stockFilter === 'all') {
       dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
@@ -146,6 +184,12 @@ export default function InventoryPage() {
   }, [loadData]);
 
   useEffect(() => {
+    if (role === 'admin') {
+      dispatch(fetchAllPharmacists({ page: 1, limit: 200 }));
+    }
+  }, [dispatch, role]);
+
+  useEffect(() => {
     if (!filterOpen) return undefined;
     const handler = (e) => {
       if (filterRef.current && !filterRef.current.contains(e.target)) setFilterOpen(false);
@@ -154,15 +198,30 @@ export default function InventoryPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [filterOpen]);
 
-  const allCompanies = ['All', ...new Set(medicines.map((m) => m.company).filter(Boolean))];
+  useEffect(() => {
+    if (!gstOpen) return undefined;
+    const handler = (e) => {
+      if (gstRef.current && !gstRef.current.contains(e.target)) setGstOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [gstOpen]);
 
-  const activeFilterCount = (categoryFilter !== 'All' ? 1 : 0) + (companyFilter !== 'All' ? 1 : 0);
+  const activeFilterCount = (categoryFilter ? 1 : 0) + (companyFilter ? 1 : 0);
 
-  const resetFilters = () => {
-    setCategoryFilter('All');
-    setCompanyFilter('All');
-    setStockFilter('all');
+  const toggleFilter = () => {
+    if (!filterOpen) {
+      setCategoryDraft(categoryFilter);
+      setCompanyDraft(companyFilter);
+    }
+    setFilterOpen(!filterOpen);
+  };
+
+  const applyFilters = () => {
+    setCategoryFilter(categoryDraft.trim());
+    setCompanyFilter(companyDraft.trim());
     setPage(1);
+    setFilterOpen(false);
   };
 
   const chips = [
@@ -189,21 +248,24 @@ export default function InventoryPage() {
     expired: 'bg-red-50 text-red-600',
   };
 
-  const exportCsv = () => {
+  const exportInventory = (format) => {
+    const filename = `inventory-${new Date().toISOString().slice(0, 10)}`;
     const headers = ['Name', 'Generic', 'Category', 'Company', 'Batch', 'Stock', 'SellingPrice', 'PurchasePrice', 'Unit', 'Expiry'];
     const rows = filtered.map((m) => [
       m.name, m.genericName, m.category, m.company, m.batch, m.stock, m.sellingPrice, m.purchasePrice, m.unit, m.expiry,
     ]);
-    const csv = [headers, ...rows]
-      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (format === 'excel') {
+      exportExcel(filename, [{ name: 'Inventory', headers, rows }]);
+    } else {
+      exportTablePdf({
+        filename,
+        title: 'Inventory Report',
+        subtitle: `Generated ${new Date().toLocaleDateString('en-IN')}`,
+        headers,
+        rows,
+        alignRight: [5, 6, 7],
+      });
+    }
   };
 
   const filtered = (() => {
@@ -220,12 +282,12 @@ export default function InventoryPage() {
       );
     }
 
-    if (categoryFilter !== 'All') {
-      list = list.filter((m) => m.category === categoryFilter);
+    if (categoryFilter) {
+      list = list.filter((m) => (m.category || '').toLowerCase().includes(categoryFilter.toLowerCase()));
     }
 
-    if (companyFilter !== 'All') {
-      list = list.filter((m) => m.company === companyFilter);
+    if (companyFilter) {
+      list = list.filter((m) => (m.company || '').toLowerCase().includes(companyFilter.toLowerCase()));
     }
 
     if (stockFilter === 'low') {
@@ -279,6 +341,9 @@ export default function InventoryPage() {
         fd.append(key, data[key]);
       }
     }
+    if (role === 'admin' && data.pharmacist) {
+      fd.append('pharmacist', data.pharmacist);
+    }
     if (imageFile) {
       fd.append('image', imageFile);
     }
@@ -297,6 +362,10 @@ export default function InventoryPage() {
     }
     if (!form.manufacturingDate || !form.expiry) {
       setFormError('Manufacturing Date and Expiry Date are required');
+      return;
+    }
+    if (role === 'admin' && !form.pharmacist) {
+      setFormError('Please select a pharmacist for this medicine');
       return;
     }
     if (imageFile && imageFile.size > 2 * 1024 * 1024) {
@@ -363,6 +432,7 @@ export default function InventoryPage() {
       stock: m.stock ?? '0',
       lowStockThreshold: m.lowStockThreshold ?? '10',
       description: m.description || '',
+      pharmacist: m.pharmacist?._id || m.pharmacist || '',
     });
     setImageFile(null);
     setFormError('');
@@ -374,8 +444,14 @@ export default function InventoryPage() {
     dispatch(fetchStockHistory({ role, params: { medicineId: m._id, limit: 50 } }));
   };
 
+  const handleView = (id) => {
+    setViewId(id);
+    dispatch(fetchMedicineDetail({ role, id }));
+  };
+
   const openAdjust = (m) => {
     setAdjustId(m._id);
+    setAdjustPos({ x: 0, y: 0 });
     setAdjustForm({ type: 'increase', quantity: '', reason: '', note: '' });
     setAdjustError('');
   };
@@ -439,11 +515,18 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-center gap-2.5">
           <button
-            onClick={exportCsv}
+            onClick={() => exportInventory('pdf')}
             className="inline-flex items-center gap-2 rounded-lgx border border-line bg-surface px-4 py-2.5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
           >
-            <Download size={16} />
-            Export CSV
+            <FileDown size={16} />
+            Export PDF
+          </button>
+          <button
+            onClick={() => exportInventory('excel')}
+            className="inline-flex items-center gap-2 rounded-lgx border border-line bg-surface px-4 py-2.5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
+          >
+            <Sheet size={16} />
+            Export Excel
           </button>
           <button
             onClick={openAdd}
@@ -480,7 +563,7 @@ export default function InventoryPage() {
         {/* Filter popover */}
         <div className="relative" ref={filterRef}>
           <button
-            onClick={() => setFilterOpen(!filterOpen)}
+            onClick={toggleFilter}
             className={`inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-[14px] font-semibold transition-colors ${
               filterOpen || activeFilterCount > 0
                 ? 'border-accent bg-accent-soft text-accent'
@@ -499,44 +582,31 @@ export default function InventoryPage() {
 
           {filterOpen && (
             <div className="absolute right-0 z-50 mt-2 w-[280px] rounded-xl border border-line bg-surface p-4 shadow-xl">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-body">Filter Inventory</p>
-
               <div className="mb-3">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  <option value="All">All Categories</option>
-                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <input
+                  type="text"
+                  value={categoryDraft}
+                  onChange={(e) => setCategoryDraft(e.target.value)}
+                  placeholder="Type to filter category..."
+                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                />
               </div>
 
               <div className="mb-4">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Company</label>
-                <select
-                  value={companyFilter}
-                  onChange={(e) => { setCompanyFilter(e.target.value); setPage(1); }}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                >
-                  {allCompanies.map((c) => (
-                    <option key={c} value={c}>{c === 'All' ? 'All Companies' : c}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={companyDraft}
+                  onChange={(e) => setCompanyDraft(e.target.value)}
+                  placeholder="Type to filter company..."
+                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
+              <div className="flex justify-end border-t border-line pt-3">
                 <button
-                  onClick={resetFilters}
-                  disabled={activeFilterCount === 0}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold text-heading transition-colors hover:bg-bgsecondary disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <RotateCcw size={14} />
-                  Reset
-                </button>
-                <button
-                  onClick={() => setFilterOpen(false)}
+                  onClick={applyFilters}
                   className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-accent-hover"
                 >
                   Apply
@@ -546,17 +616,17 @@ export default function InventoryPage() {
           )}
         </div>
 
-        <select
+        <CustomSelect
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          className="h-10 rounded-lg border border-line bg-surface px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-        >
-          <option value="newest">Expiry: Newest</option>
-          <option value="oldest">Expiry: Oldest</option>
-          <option value="name">Name</option>
-          <option value="price">Price: High to Low</option>
-          <option value="stock">Stock: Low to High</option>
-        </select>
+          onChange={setSort}
+          options={[
+            { value: 'newest', label: 'Expiry: Newest' },
+            { value: 'oldest', label: 'Expiry: Oldest' },
+            { value: 'name', label: 'Name' },
+            { value: 'price', label: 'Price: High to Low' },
+            { value: 'stock', label: 'Stock: Low to High' },
+          ]}
+        />
       </div>
 
       {/* Stock status chips */}
@@ -652,7 +722,7 @@ export default function InventoryPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
-                        onClick={() => setViewId(m._id)}
+                        onClick={() => handleView(m._id)}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
                         title="View details"
                       >
@@ -765,9 +835,7 @@ export default function InventoryPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category *</label>
-                <select value={form.category} onChange={(e) => setField('category', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <CustomSelect value={form.category} onChange={(v) => setField('category', v)} options={allCategories.map((c) => ({ value: c, label: c }))} placeholder="Select category" />
               </div>
 
               <div>
@@ -782,9 +850,7 @@ export default function InventoryPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Unit *</label>
-                <select value={form.unit} onChange={(e) => setField('unit', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
-                  {allUnits.map((u) => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
-                </select>
+                <CustomSelect value={form.unit} onChange={(v) => setField('unit', v)} options={allUnits.map((u) => ({ value: u, label: u.charAt(0).toUpperCase() + u.slice(1) }))} placeholder="Select unit" />
               </div>
 
               <div>
@@ -807,9 +873,31 @@ export default function InventoryPage() {
                 <input type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setField('purchasePrice', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
               </div>
 
-              <div>
+              <div className="relative" ref={gstRef}>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">GST (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={form.gst} onChange={(e) => setField('gst', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="0" />
+                <button
+                  type="button"
+                  onClick={() => setGstOpen((o) => !o)}
+                  className="flex h-10 w-full items-center justify-between rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                >
+                  <span>{Number(form.gst) || 0}%</span>
+                  <ChevronDown size={16} className={`text-body transition-transform ${gstOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {gstOpen && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1.5 rounded-lg border border-line bg-surface p-1.5 shadow-xl">
+                    {[0, 5, 12, 18, 28].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => { setField('gst', String(g)); setGstOpen(false); }}
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-[14px] transition-colors hover:bg-bgsecondary ${Number(form.gst) === g ? 'font-semibold text-accent' : 'text-heading'}`}
+                      >
+                        {g}%
+                        {Number(form.gst) === g && <Check size={15} className="text-accent" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -821,6 +909,13 @@ export default function InventoryPage() {
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Low Stock Threshold</label>
                 <input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setField('lowStockThreshold', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="10" />
               </div>
+
+              {role === 'admin' && (
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
+                  <CustomSelect value={form.pharmacist} onChange={(v) => setField('pharmacist', v)} options={pharmacists.map((p) => ({ value: p._id, label: `${p.name} (${p.email})` }))} placeholder="Select pharmacist..." />
+                </div>
+              )}
 
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Description</label>
@@ -871,23 +966,47 @@ export default function InventoryPage() {
             </div>
 
             {(() => {
-              const m = medicines.find((x) => x._id === viewId);
+              const listItem = medicines.find((x) => x._id === viewId);
+              const m = viewItem && viewItem._id === viewId ? viewItem : listItem;
               if (!m) return null;
+
+              if (viewLoading) {
+                return (
+                  <div className="flex flex-col items-center justify-center gap-3 px-6 py-16">
+                    <Loader2 size={22} className="animate-spin text-accent" />
+                    <span className="text-[13px] text-body">Loading stock item details...</span>
+                  </div>
+                );
+              }
+
+              if (viewError && !listItem) {
+                return (
+                  <div className="px-6 py-10 text-center text-[13px] text-red-600">{viewError}</div>
+                );
+              }
+
               const status = getStatus(m.stock, m.lowStockThreshold);
               const rows = [
                 { label: 'Generic Name', value: m.genericName || '—' },
                 { label: 'Category', value: m.category },
                 { label: 'Company', value: m.company || '—' },
                 { label: 'Batch Number', value: m.batch || '—' },
-                { label: 'Unit', value: m.unit.charAt(0).toUpperCase() + m.unit.slice(1) },
+                { label: 'Unit', value: m.unit ? m.unit.charAt(0).toUpperCase() + m.unit.slice(1) : '—' },
                 { label: 'Stock Quantity', value: Number(m.stock).toLocaleString() },
                 { label: 'Low Stock Threshold', value: m.lowStockThreshold },
-                { label: 'Selling Price', value: `₹${m.sellingPrice}` },
+                { label: 'Selling Price', value: m.sellingPrice != null ? `₹${m.sellingPrice}` : '—' },
                 { label: 'Purchase Price', value: m.purchasePrice ? `₹${m.purchasePrice}` : '—' },
                 { label: 'GST', value: m.gst ? `${m.gst}%` : '—' },
                 { label: 'Manufacturing Date', value: formatDate(m.manufacturingDate) },
                 { label: 'Expiry Date', value: formatDate(m.expiry) },
               ];
+              if (role === 'admin') {
+                const phId = typeof m.pharmacist === 'object' && m.pharmacist ? m.pharmacist._id : m.pharmacist;
+                const phName = typeof m.pharmacist === 'object' && m.pharmacist
+                  ? m.pharmacist.name
+                  : (pharmacists.find((p) => p._id === phId)?.name || 'Unassigned');
+                rows.push({ label: 'Pharmacist', value: phName });
+              }
               if (m.description) {
                 rows.push({ label: 'Description', value: m.description });
               }
@@ -944,13 +1063,23 @@ export default function InventoryPage() {
       {adjustId && adjustMedicine && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAdjustId(null)} />
-          <div className="relative w-full max-w-[520px] rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md">
-              <div>
-                <h3 className="text-lg font-bold text-heading">Adjust Stock</h3>
-                <p className="text-[12px] text-body">{adjustMedicine.name} · {adjustMedicine.batch || ''} · Current: <span className="font-semibold text-heading">{Number(adjustMedicine.stock).toLocaleString()}</span></p>
+          <div
+            className="relative w-full max-w-[520px] rounded-2xl border border-line bg-surface shadow-2xl"
+            style={adjustPos.x || adjustPos.y ? { transform: `translate(${adjustPos.x}px, ${adjustPos.y}px)` } : undefined}
+          >
+            <div
+              onMouseDown={startAdjustDrag}
+              className="sticky top-0 z-10 flex select-none items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md"
+              style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: dragging ? 'none' : undefined }}
+            >
+              <div className="flex items-start gap-2.5">
+                <GripVertical size={17} className="mt-1 shrink-0 text-body/50" />
+                <div>
+                  <h3 className="text-lg font-bold text-heading">Adjust Stock</h3>
+                  <p className="text-[12px] text-body">{adjustMedicine.name} · {adjustMedicine.batch || ''} · Current: <span className="font-semibold text-heading">{Number(adjustMedicine.stock).toLocaleString()}</span></p>
+                </div>
               </div>
-              <button onClick={() => setAdjustId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
+              <button type="button" onClick={() => setAdjustId(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
                 <X size={18} />
               </button>
             </div>
@@ -989,14 +1118,32 @@ export default function InventoryPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Quantity *</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={adjustForm.quantity}
-                  onChange={(e) => setAdjustForm((f) => ({ ...f, quantity: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  placeholder="e.g. 10"
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustForm((f) => ({ ...f, quantity: String(Math.max(1, (Number(f.quantity) || 1) - 1)) }))}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-bgprimary text-heading transition-colors hover:bg-bgsecondary"
+                    title="Decrease"
+                  >
+                    <Minus size={16} />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    value={adjustForm.quantity}
+                    onChange={(e) => setAdjustForm((f) => ({ ...f, quantity: e.target.value }))}
+                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-center text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
+                    placeholder="e.g. 10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAdjustForm((f) => ({ ...f, quantity: String((Number(f.quantity) || 1) + 1) }))}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-bgprimary text-heading transition-colors hover:bg-bgsecondary"
+                    title="Increase"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
               </div>
 
               <div>

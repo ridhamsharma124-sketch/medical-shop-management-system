@@ -66,6 +66,7 @@ export default function PharmacistDashboard() {
   const user = useSelector((state) => state.auth.user);
   const { summary, charts } = useSelector((state) => state.dashboard);
   const recentBills = useSelector((state) => state.sales.items);
+  const billsCount = useSelector((state) => state.sales.total);
   const dashboardMedicines = useSelector((state) => state.medicines.items);
   const role = user?.role;
 
@@ -89,7 +90,7 @@ export default function PharmacistDashboard() {
   const s = summary || {};
   const sales = s.sales || {};
   const medicines = s.medicines || {};
-  const bills = s.bills || {};
+  const summaryStockAlerts = s.stockAlerts || {};
   const stockAlerts = (() => {
     const meds = Array.isArray(dashboardMedicines) ? dashboardMedicines : [];
     const threshold = (m) => Number(m.lowStockThreshold) || 10;
@@ -197,7 +198,7 @@ export default function PharmacistDashboard() {
             {
               icon: FileText,
               label: 'Total Bills',
-              value: fmt(bills.total),
+              value: fmt(billsCount),
               trend: { label: 'billing records', up: true },
               to: '/pharmacist/billing',
             },
@@ -211,15 +212,15 @@ export default function PharmacistDashboard() {
             {
               icon: AlertTriangle,
               label: 'Low Stock',
-              value: fmt(stockAlerts.lowStock),
-              trend: { label: `${fmt(stockAlerts.outOfStock)} out of stock`, up: false },
+              value: fmt(summaryStockAlerts.lowStock ?? stockAlerts.lowStock),
+              trend: { label: `${fmt(summaryStockAlerts.outOfStock ?? stockAlerts.outOfStock)} out of stock`, up: false },
               to: '/pharmacist/inventory?filter=low',
             },
             {
               icon: PackageX,
               label: 'Out of Stock',
-              value: fmt(stockAlerts.outOfStock),
-              trend: { label: `${fmt(stockAlerts.lowStock)} low stock`, up: false },
+              value: fmt(summaryStockAlerts.outOfStock ?? stockAlerts.outOfStock),
+              trend: { label: `${fmt(summaryStockAlerts.lowStock ?? stockAlerts.lowStock)} low stock`, up: false },
               to: '/pharmacist/inventory?filter=out',
             },
             {

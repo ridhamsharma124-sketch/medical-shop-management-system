@@ -51,6 +51,9 @@ export default function NotificationsPage() {
     }
   }, [dispatch, role]);
 
+  const combinedItems = items;
+  const allCount = combinedItems.length;
+
   useEffect(() => {
     if (role && items.length > 0 && !loading && !markedRef.current) {
       markNotificationsRead(role);
@@ -67,12 +70,12 @@ export default function NotificationsPage() {
   const filtered = useMemo(() => {
     const activeFilter = FILTERS.find((f) => f.key === filter);
     const term = search.trim().toLowerCase();
-    return items.filter((n) => {
+    return combinedItems.filter((n) => {
       if (activeFilter?.types && !activeFilter.types.includes(n.type)) return false;
       if (!term) return true;
       return (n.title || '').toLowerCase().includes(term) || (n.message || '').toLowerCase().includes(term);
     });
-  }, [items, filter, search]);
+  }, [combinedItems, filter, search]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -86,8 +89,8 @@ export default function NotificationsPage() {
           Notifications
         </h1>
         <p className="mt-1 text-[14px] text-body">
-          {total > 0
-            ? `${total} alert${total === 1 ? '' : 's'} · low stock, expiry, bills & orders`
+          {allCount > 0
+            ? `${allCount} alert${allCount === 1 ? '' : 's'} · low stock, expiry, bills & orders`
             : 'Alerts for low stock, expiry, bills & orders will show up here.'}
         </p>
       </header>
@@ -213,8 +216,8 @@ export default function NotificationsPage() {
               {filtered.length}
             </span>{' '}
             of{' '}
-            <span className="font-bold text-heading">{filter === 'all' ? total : items.length}</span>{' '}
-            notification{total === 1 ? '' : 's'}
+            <span className="font-bold text-heading">{filter === 'all' ? allCount : filtered.length}</span>{' '}
+            notification{allCount === 1 ? '' : 's'}
           </p>
           {filter === 'all' && items.length < total && (
             <button

@@ -17,6 +17,7 @@ import {
   UserCheck,
   Boxes,
   Printer,
+  FileDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,6 +41,8 @@ import {
 import { fetchCustomersList } from '../features/customerSlice';
 import { fetchAllPharmacists } from '../features/pharmacistSlice';
 import { fetchMedicinesList } from '../features/medicineSlice';
+import { exportInvoicePdf } from '../utils/exportUtils';
+import CustomSelect from '../components/ui/CustomSelect';
 
 const formatDate = (d) => {
   if (!d) return '—';
@@ -308,6 +311,11 @@ export default function BillingPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPdf = () => {
+    if (!detail?.bill) return;
+    exportInvoicePdf({ bill: detail.bill, items: detail.items || [] });
   };
 
   const inputCls =
@@ -599,43 +607,31 @@ export default function BillingPage() {
                 {role === 'admin' && (
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
-                  <select
+                  <CustomSelect
                     value={form.pharmacistId}
-                    onChange={(e) => { setForm((f) => ({ ...f, pharmacistId: e.target.value, customerId: '' })); setItems([emptyItem]); }}
-                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  >
-                    <option value="">Select pharmacist</option>
-                    {pharmacists.map((p) => (
-                      <option key={p._id} value={p._id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => { setForm((f) => ({ ...f, pharmacistId: v, customerId: '' })); setItems([emptyItem]); }}
+                    options={pharmacists.map((p) => ({ value: p._id, label: p.name }))}
+                    placeholder="Select pharmacist"
+                  />
                   <span className="mt-1 block text-[11px] text-body">Bills are recorded against this pharmacist&apos;s sales & stock.</span>
                 </div>
                 )}
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Customer *</label>
-                  <select
+                  <CustomSelect
                     value={form.customerId}
-                    onChange={(e) => setForm((f) => ({ ...f, customerId: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  >
-                    <option value="">Select customer</option>
-                    {fallbackCustomers.map((c) => (
-                      <option key={c._id} value={c._id}>{c.name} — {c.phoneNumber}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+                    options={fallbackCustomers.map((c) => ({ value: c._id, label: `${c.name} — ${c.phoneNumber}` }))}
+                    placeholder="Select customer"
+                  />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Payment Method *</label>
-                  <select
+                  <CustomSelect
                     value={form.paymentMethod}
-                    onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  >
-                    {PAY_METHODS.map((m) => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((f) => ({ ...f, paymentMethod: v }))}
+                    options={PAY_METHODS}
+                  />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Discount (₹)</label>
@@ -680,20 +676,14 @@ export default function BillingPage() {
                       >
                         <div className="col-span-12 sm:col-span-5">
                           <label className="mb-1 block text-[11px] font-medium text-body">Medicine</label>
-                          <select
+                          <CustomSelect
                             value={it.medicineId}
-                            onChange={(e) => setItemField(it.key, 'medicineId', e.target.value)}
-                            className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                          >
-                            <option value="">Select medicine</option>
-                            {fallbackMedicines
+                            onChange={(v) => setItemField(it.key, 'medicineId', v)}
+                            options={fallbackMedicines
                               .filter((x) => !selectedMedicines.has(x._id) || it.medicineId === x._id)
-                              .map((x) => (
-                                <option key={x._id} value={x._id}>
-                                  {x.name} — stock {x.stock} · ₹{x.sellingPrice}
-                                </option>
-                              ))}
-                          </select>
+                              .map((x) => ({ value: x._id, label: `${x.name} — stock ${x.stock} · ₹${x.sellingPrice}` }))}
+                            placeholder="Select medicine"
+                          />
                           {m && (
                             <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-body">
                               <Boxes size={12} className="text-accent" />
@@ -911,6 +901,14 @@ export default function BillingPage() {
                 {detail?.bill?.customer?.rewardPoints !== undefined ? `Reward points: ${detail.bill.customer.rewardPoints}` : ''}
               </span>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={!detail?.bill}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary disabled:opacity-50"
+                >
+                  <FileDown size={16} />
+                  Download PDF
+                </button>
                 <button
                   onClick={handlePrint}
                   className="inline-flex h-10 items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-5 text-[14px] font-semibold text-accent transition-colors hover:bg-accent/10"

@@ -15,6 +15,8 @@ import {
   UserCheck,
   PackageSearch,
   Boxes,
+  FileDown,
+  Sheet,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,6 +42,8 @@ import {
   fetchBestSellingReportData,
 } from '../features/reportSlice';
 import { fetchAllPharmacists } from '../features/pharmacistSlice';
+import { exportTablePdf, exportExcel } from '../utils/exportUtils';
+import CustomSelect from '../components/ui/CustomSelect';
 
 const formatDate = (d) => {
   if (!d) return '—';
@@ -151,11 +155,118 @@ export default function ReportsPage() {
     refetch();
   }, [refetch]);
 
+  const rangeLabel = rangeKey + (startDate || endDate ? ` (${startDate || '…'} → ${endDate || '…'})` : '');
+
+  const exportReport = (format) => {
+    const date = new Date().toISOString().slice(0, 10);
+    let filename;
+    let title;
+    let headers;
+    let rows;
+    let summaryLines = [];
+    let alignRight;
+
+    if (activeTab === 'sales') {
+      filename = `sales-report-${date}`;
+      title = 'Sales Report';
+      const bills = sales?.data || [];
+      headers = ['Invoice', 'Customer', 'Phone', ...(role === 'admin' ? ['Pharmacist'] : []), 'Date', 'Total'];
+      rows = bills.map((b) => [
+        b.invoiceNumber,
+        b.customerName || b.customer?.name || '—',
+        b.customerPhone || b.customer?.phoneNumber || '',
+        ...(role === 'admin' ? [(typeof b.pharmacist === 'object' && b.pharmacist ? b.pharmacist.name : '—')] : []),
+        formatDate(b.billDate || b.createdAt),
+        Number(b.grandTotal || 0),
+      ]);
+      alignRight = rows.length ? [rows[0].length - 1] : [1];
+      if (sales?.summary) {
+        summaryLines = [
+          `Revenue: ${inr(sales.summary.totalRevenue)}`,
+          `GST: ${inr(sales.summary.totalGst)}`,
+          `Discount: ${inr(sales.summary.totalDiscount)}`,
+          `Bills: ${sales.summary.billCount || 0}`,
+        ];
+      }
+    } else if (activeTab === 'profit') {
+      filename = `profit-report-${date}`;
+      if (role === 'admin') {
+        title = 'Profit by Pharmacist';
+        headers = ['Pharmacist', 'Email', 'Revenue', 'Cost', 'Profit', 'Items Sold', 'Bills'];
+        rows = (profitByPharmacist?.data || []).map((r) => [
+          r.pharmacist?.name || 'Deleted user',
+          r.pharmacist?.email || '',
+          Number(r.totalRevenue || 0),
+          Number(r.totalCost || 0),
+          Number(r.totalProfit || 0),
+          r.itemsSold || 0,
+          r.billCount || 0,
+        ]);
+        alignRight = [2, 3, 4, 5, 6];
+      } else {
+        title = 'Profit Report';
+        headers = ['Medicine', 'Qty Sold', 'Revenue', 'Cost', 'Profit'];
+        rows = (profit?.byMedicine || []).map((m) => [
+          m.medicineName || '—',
+          m.quantitySold || 0,
+          Number(m.revenue || 0),
+          Number(m.cost || 0),
+          Number(m.profit || 0),
+        ]);
+        alignRight = [1, 2, 3, 4];
+        if (profit?.summary) {
+          summaryLines = [
+            `Revenue: ${inr(profit.summary.totalRevenue)}`,
+            `Cost: ${inr(profit.summary.totalCost)}`,
+            `Profit: ${inr(profit.summary.totalProfit)}`,
+            `Items: ${profit.summary.itemsSold || 0}`,
+          ];
+        }
+      }
+    } else if (activeTab === 'purchase') {
+      filename = `purchase-report-${date}`;
+      title = 'Purchase Report';
+      const orders = purchase?.data || [];
+      headers = ['Order No.', 'Supplier', ...(role === 'admin' ? ['Pharmacist'] : []), 'Date', 'Amount'];
+      rows = orders.map((o) => [
+        o.orderNumber,
+        o.supplier?.name || '—',
+        ...(role === 'admin' ? [(typeof o.pharmacist === 'object' && o.pharmacist ? o.pharmacist.name : '—')] : []),
+        formatDate(o.orderDate || o.createdAt),
+        Number(o.totalAmount || 0),
+      ]);
+      alignRight = rows.length ? [rows[0].length - 1] : [1];
+      if (purchase?.summary) {
+        summaryLines = [
+          `Total: ${inr(purchase.summary.totalPurchaseAmount)}`,
+          `Orders: ${purchase.summary.orderCount || 0}`,
+        ];
+      }
+    } else {
+      filename = `best-selling-${date}`;
+      title = 'Best Selling Medicines';
+      headers = ['#', 'Medicine', 'Category', 'Sold', 'Revenue'];
+      rows = (bestSelling?.data || []).map((m, i) => [
+        i + 1,
+        m.medicineName || m.medicineId || 'Unknown',
+        m.category || 'Medicine',
+        m.totalQuantitySold || 0,
+        Number(m.totalRevenue || 0),
+      ]);
+      alignRight = [3, 4];
+      summaryLines = [`Top ${rows.length} medicines by units sold`];
+    }
+
+    const subtitle = `Range: ${rangeLabel}${phName !== 'All Pharmacists' ? ` · ${phName}` : ''}`;
+    if (format === 'excel') {
+      exportExcel(filename, [{ name: title, headers, rows }]);
+    } else {
+      exportTablePdf({ filename, title, subtitle, headers, rows, summaryLines, alignRight: alignRight || [] });
+    }
+  };
+
   const phLabel = sales?.pharmacist || purchase?.pharmacist || null;
   const phName = phLabel && typeof phLabel === 'object' ? phLabel.name : 'All Pharmacists';
-  const rangeFrom = sales?.dateRange?.from || purchase?.dateRange?.from || '';
-  const rangeTo = sales?.dateRange?.to || purchase?.dateRange?.to || '';
-  const dateRangeLabel = rangeFrom && rangeTo ? `${formatDate(rangeFrom)} — ${formatDate(rangeTo)}` : rangeFrom;
 
   const salesTrend = useMemo(() => {
     if (!sales?.data) return [];
@@ -269,16 +380,16 @@ export default function ReportsPage() {
           className="h-9 rounded-lg border border-line bg-surface px-3 text-[12.5px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
         />
         {role === 'admin' && activeTab !== 'profit' && (
-          <select
+          <CustomSelect
             value={pharmacistFilter}
-            onChange={(e) => setPharmacistFilter(e.target.value)}
-            className="h-9 rounded-lg border border-line bg-surface px-3 text-[12.5px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-          >
-            <option value="">All Pharmacists</option>
-            {pharmacists.map((p) => (
-              <option key={p._id} value={p._id}>{p.name}</option>
-            ))}
-          </select>
+            onChange={setPharmacistFilter}
+            size="sm"
+            className="w-44"
+            options={[
+              { value: '', label: 'All Pharmacists' },
+              ...pharmacists.map((p) => ({ value: p._id, label: p.name })),
+            ]}
+          />
         )}
         <button
           onClick={refetch}
@@ -288,7 +399,23 @@ export default function ReportsPage() {
           Apply
         </button>
       </div>
-      <span className="text-[12px] text-body">{dateRangeLabel} {phName !== 'All Pharmacists' ? `· ${phName}` : ''}</span>
+      <span className="flex items-center gap-2">
+        <span className="text-[12px] text-body">{phName !== 'All Pharmacists' ? `Filtered by ${phName}` : ''}</span>
+        <button
+          onClick={() => exportReport('pdf')}
+          className="inline-flex items-center gap-2 rounded-lgx border border-line bg-surface px-3.5 py-2 text-[12.5px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
+        >
+          <FileDown size={14} />
+          Export PDF
+        </button>
+        <button
+          onClick={() => exportReport('excel')}
+          className="inline-flex items-center gap-2 rounded-lgx border border-line bg-surface px-3.5 py-2 text-[12.5px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
+        >
+          <Sheet size={14} />
+          Export Excel
+        </button>
+      </span>
     </div>
   );
 
@@ -482,7 +609,6 @@ export default function ReportsPage() {
                       tickLine={false}
                       axisLine={false}
                     />
-                    <Tooltip formatter={(value, name) => [inr(value), name]} contentStyle={{ borderRadius: 12, border: '1px solid #E7D8C4', fontSize: 13 }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="revenue" name="Revenue" fill="#C1592E" radius={[0, 2, 2, 0]} barSize={10} />
                     <Bar dataKey="cost" name="Cost" fill="#D9A441" radius={[0, 2, 2, 0]} barSize={10} />

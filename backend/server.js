@@ -9,7 +9,7 @@ import authRoutes from './src/routes/authRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 import pharmacistRoutes from './src/routes/pharmacistsRoutes.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
-import "./src/jobs/checkExpiry.js";
+import './src/jobs/checkExpiry.js';
 
 dotenv.config({ quiet: true });
 

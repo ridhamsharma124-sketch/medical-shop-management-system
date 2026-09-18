@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -31,6 +31,7 @@ import {
 import { fetchSuppliersList } from '../../features/supplierSlice';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 import { fetchMedicinesList } from '../../features/medicineSlice';
+import CustomSelect from '../../components/ui/CustomSelect';
 
 const formatDate = (d) => {
   if (!d) return '—';
@@ -74,6 +75,7 @@ export default function PurchasesPage() {
   const [thisMonthOnly, setThisMonthOnly] = useState(false);
   const [itemsReportOpen, setItemsReportOpen] = useState(false);
   const [itemsSearch, setItemsSearch] = useState('');
+  const lastItemsSearch = useRef('');
 
   const loadData = useCallback(() => {
     dispatch(fetchPurchaseOrdersList({ role, params: { limit: 50 } }));
@@ -221,15 +223,22 @@ export default function PurchasesPage() {
   };
 
   const openItemsReport = () => {
+    lastItemsSearch.current = '';
     setItemsSearch('');
     dispatch(clearPurchaseItems());
     setItemsReportOpen(true);
     dispatch(fetchAllPurchaseItems({ role, params: { limit: 200 } }));
   };
 
-  const reloadItemsReport = () => {
-    dispatch(fetchAllPurchaseItems({ role, params: { search: itemsSearch || undefined, limit: 200 } }));
-  };
+  useEffect(() => {
+    if (!itemsReportOpen) return undefined;
+    if (itemsSearch === lastItemsSearch.current) return undefined;
+    lastItemsSearch.current = itemsSearch;
+    const t = setTimeout(() => {
+      dispatch(fetchAllPurchaseItems({ role, params: { search: itemsSearch.trim() || undefined, limit: 200 } }));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [itemsReportOpen, itemsSearch, role, dispatch]);
 
   const itemsTotalSpent = useMemo(
     () => purchaseItems.reduce((acc, it) => acc + Number(it.total || 0), 0),
@@ -465,31 +474,23 @@ export default function PurchasesPage() {
               <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Supplier *</label>
-                  <select
+                  <CustomSelect
                     value={form.supplierId}
-                    onChange={(e) => setForm((f) => ({ ...f, supplierId: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  >
-                    <option value="">Select supplier</option>
-                    {suppliers.map((s) => (
-                      <option key={s._id} value={s._id}>{s.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}
+                    options={suppliers.map((s) => ({ value: s._id, label: s.name }))}
+                    placeholder="Select supplier"
+                  />
                 </div>
 
                 {role === 'admin' && (
                 <div>
                   <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
-                  <select
+                  <CustomSelect
                     value={form.pharmacistId}
-                    onChange={(e) => setForm((f) => ({ ...f, pharmacistId: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  >
-                    <option value="">Select pharmacist</option>
-                    {pharmacists.map((p) => (
-                      <option key={p._id} value={p._id}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((f) => ({ ...f, pharmacistId: v }))}
+                    options={pharmacists.map((p) => ({ value: p._id, label: p.name }))}
+                    placeholder="Select pharmacist"
+                  />
                   <span className="mt-1 block text-[11px] text-body">Medicines will be assigned to the selected pharmacist — their stock will be updated accordingly.</span>
                 </div>
               )}
@@ -522,20 +523,14 @@ export default function PurchasesPage() {
                     >
                       <div className="col-span-12 sm:col-span-4">
                         <label className="mb-1 block text-[11px] font-medium text-body">Medicine</label>
-                        <select
+                        <CustomSelect
                           value={it.medicineId}
-                          onChange={(e) => setItemField(it.key, 'medicineId', e.target.value)}
-                          className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                        >
-                          <option value="">Select medicine</option>
-                          {fallbackMedicines
+                          onChange={(v) => setItemField(it.key, 'medicineId', v)}
+                          options={fallbackMedicines
                             .filter((m) => !selectedMedicines.has(m._id) || it.medicineId === m._id)
-                            .map((m) => (
-                              <option key={m._id} value={m._id}>
-                                {m.name} — stock {m.stock}
-                              </option>
-                            ))}
-                        </select>
+                            .map((m) => ({ value: m._id, label: `${m.name} — stock ${m.stock}` }))}
+                          placeholder="Select medicine"
+                        />
                       </div>
 
                       <div className="col-span-6 sm:col-span-2">
@@ -766,21 +761,12 @@ export default function PurchasesPage() {
                   <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-body" />
                   <input
                     type="text"
-                    placeholder="Search by medicine name..."
+                    placeholder="Type to search by medicine name..."
                     value={itemsSearch}
                     onChange={(e) => setItemsSearch(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') reloadItemsReport(); }}
                     className="h-10 w-full rounded-lg border border-line bg-surface pl-10 pr-4 text-[14px] text-heading placeholder:text-[#B5A99A] transition-[border-color,box-shadow] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
                   />
                 </div>
-                <button
-                  onClick={reloadItemsReport}
-                  disabled={purchaseItemsLoading}
-                  className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-4 py-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-60"
-                >
-                  <Search size={14} />
-                  Search
-                </button>
               </div>
 
               {purchaseItemsLoading && (

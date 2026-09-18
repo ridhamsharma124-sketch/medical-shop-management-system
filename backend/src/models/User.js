@@ -58,6 +58,7 @@ userSchema.methods.toSafeJSON = function () {
     email: this.email,
     phone: this.phone,
     role: this.role,
+    createdAt: this.createdAt,
   };
 };
 

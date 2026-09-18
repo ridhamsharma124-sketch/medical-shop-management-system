@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, Eye, EyeOff, User, Phone, KeyRound, ArrowLeft, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { register, verifyOtp, resendOtp, clearError } from '../../features/authSlice.js';
+import CustomSelect from '../../components/ui/CustomSelect';
 
 export default function SignupPage() {
   const [showPass, setShowPass] = useState(false);
@@ -156,14 +157,12 @@ export default function SignupPage() {
               <label htmlFor="signup-role" className="text-[13px] font-medium text-heading">
                 Account role
               </label>
-              <div className="flex h-[46px] items-center rounded-[10px] border border-line bg-surface px-3.5 transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/10">
-                <select
-                  id="signup-role"
-                  className="h-full w-full cursor-pointer border-none bg-transparent text-[15px] text-heading focus:outline-none"
-                >
-                  <option value="pharmacist">Pharmacist</option>
-                </select>
-              </div>
+              <CustomSelect
+                value="pharmacist"
+                onChange={() => {}}
+                size="lg"
+                options={[{ value: 'pharmacist', label: 'Pharmacist' }]}
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
