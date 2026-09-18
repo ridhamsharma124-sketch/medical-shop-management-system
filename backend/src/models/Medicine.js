@@ -17,8 +17,8 @@ const medicineSchema = new mongoose.Schema(
     category: {
       type: String,
       required: [true, 'Category is required'],
-      enum: ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops'],
       trim: true,
+      maxlength: [50, 'Category must be at most 50 characters'],
     },
     company: {
       type: String,
@@ -67,8 +67,10 @@ const medicineSchema = new mongoose.Schema(
     },
     gst: {
       type: Number,
-      min: [0, 'GST cannot be negative'],
-      max: [100, 'GST cannot exceed 100%'],
+      enum: {
+        values: [0, 5, 12, 18, 28],
+        message: 'GST must be one of: 0, 5, 12, 18, 28',
+      },
       default: 0,
     },
     stock: {
