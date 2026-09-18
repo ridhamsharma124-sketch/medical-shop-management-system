@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import {
   Plus,
   Search,
@@ -16,23 +16,12 @@ import {
   AlertTriangle,
   Filter,
   RotateCcw,
-  Download,
-  Package,
-  PackageX,
-  AlarmClock,
-  PackagePlus,
   ImagePlus,
-  XCircle,
-  History,
-  ArrowUpDown,
-  ArrowDownRight,
-  ArrowUpRight,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { fetchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
-import { adjustStock, fetchStockHistory, fetchMedicinesByStatus } from '../../features/inventorySlice';
-
-const statusMap = { low: 'low', out: 'outOfStock', expiring: 'nearExpiry', expired: 'expired' };
+import { fetchMedicinesList, fetchMedicineDetail, searchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
+import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 
 const allCategories = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Ointment', 'Drops'];
 const allUnits = ['strip', 'tablet', 'bottle', 'box', 'vial', 'sachet'];
@@ -52,12 +41,13 @@ const emptyMedicine = {
   stock: '0',
   lowStockThreshold: '10',
   description: '',
+  pharmacist: '',
 };
 
 function getStatus(stock, threshold) {
-  if (stock === 0) return { label: 'Out of Stock', color: 'bg-red-50 text-red-600', dot: 'bg-red-600' };
-  if (stock <= threshold) return { label: 'Low Stock', color: 'bg-amber-50 text-amber-600', dot: 'bg-amber-500' };
-  return { label: 'In Stock', color: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-500' };
+  if (stock === 0) return { label: 'Out of Stock', color: 'bg-red-50 text-red-600' };
+  if (stock <= threshold) return { label: 'Low Stock', color: 'bg-amber-50 text-amber-600' };
+  return { label: 'In Stock', color: 'bg-emerald-50 text-emerald-600' };
 }
 
 function formatDate(d) {
@@ -78,47 +68,22 @@ function isExpiringSoon(d, days = 30) {
   return diff > 0 && diff <= days * 86400000;
 }
 
-function isExpired(d) {
-  if (!d) return false;
-  return new Date(d).getTime() < Date.now();
-}
-
-const categoryColors = {
-  Tablet: 'bg-accent-soft text-accent',
-  Capsule: 'bg-olive-soft text-olive-deep',
-  Syrup: 'bg-mustard-soft text-mustard-deep',
-  Injection: 'bg-berry-soft text-berry-deep',
-  Ointment: 'bg-teal/10 text-teal',
-  Drops: 'bg-bgsecondary text-heading',
-};
-
-export default function InventoryPage() {
-  const user = useSelector((state) => state.auth.user);
-  const role = user?.role || 'admin';
+export default function MedicinesPage() {
+    const role = 'pharmacist';
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const base = location.pathname.startsWith('/pharmacist') ? '/pharmacist' : '/admin';
-
   const dispatch = useDispatch();
+  const { items: medicines, loading, error: loadError, viewItem, viewLoading, viewError, searchResults, searchLoading } = useSelector((state) => state.medicines);
+  const { items: pharmacists } = useSelector((state) => state.pharmacists);
   const [errorDismissed, setErrorDismissed] = useState(false);
+  const displayError = loadError && !errorDismissed ? loadError : '';
   const [search, setSearch] = useState('');
+  const [searchingFor, setSearchingFor] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef(null);
   const [sort, setSort] = useState('newest');
-  const [stockFilter, setStockFilter] = useState(() => {
-    const valid = ['all', 'low', 'out', 'expiring', 'expired'];
-    const f = searchParams.get('filter');
-    return f && valid.includes(f) ? f : 'all';
-  });
-  const { items: medicinesAll, loading, error: loadError } = useSelector((state) => state.medicines);
-  const { statusItems, statusLoading, statusError, historyLogs, historyLoading, historyError, adjusting } = useSelector((state) => state.inventory);
-  const activeStatus = stockFilter !== 'all';
-  const medicines = activeStatus ? statusItems : medicinesAll;
-  const displayLoading = activeStatus ? statusLoading : loading;
-  const currentError = activeStatus ? statusError : loadError;
-  const displayError = currentError && !errorDismissed ? currentError : '';
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(null);
   const [form, setForm] = useState(emptyMedicine);
@@ -128,22 +93,30 @@ export default function InventoryPage() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [viewId, setViewId] = useState(null);
-  const [historyId, setHistoryId] = useState(null);
-  const [adjustId, setAdjustId] = useState(null);
-  const [adjustForm, setAdjustForm] = useState({ type: 'increase', quantity: '', reason: '', note: '' });
-  const [adjustError, setAdjustError] = useState('');
 
   const loadData = useCallback(() => {
-    if (stockFilter === 'all') {
-      dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
-    } else {
-      dispatch(fetchMedicinesByStatus({ role, params: { status: statusMap[stockFilter], limit: 200, all: 'true' } }));
-    }
-  }, [dispatch, role, stockFilter]);
+    dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
+  }, [dispatch, role]);
 
   useEffect(() => {
-    loadData();
+    const t = setTimeout(() => loadData(), 0);
+    return () => clearTimeout(t);
   }, [loadData]);
+
+  useEffect(() => {
+    if (role === 'admin') {
+      dispatch(fetchAllPharmacists({ page: 1, limit: 200 }));
+    }
+  }, [dispatch, role]);
+
+  useEffect(() => {
+    if (!search.trim()) return undefined;
+    const t = setTimeout(() => {
+      setSearchingFor(search.trim());
+      dispatch(searchMedicinesList({ role, params: { q: search.trim(), limit: 200 } }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search, role, dispatch]);
 
   useEffect(() => {
     if (!filterOpen) return undefined;
@@ -161,64 +134,14 @@ export default function InventoryPage() {
   const resetFilters = () => {
     setCategoryFilter('All');
     setCompanyFilter('All');
-    setStockFilter('all');
     setPage(1);
   };
 
-  const chips = [
-    { key: 'all', label: 'All', icon: Package, count: medicines.length },
-    { key: 'low', label: 'Low Stock', icon: AlertTriangle, count: medicines.filter((m) => m.stock > 0 && m.stock <= m.lowStockThreshold).length },
-    { key: 'out', label: 'Out of Stock', icon: PackageX, count: medicines.filter((m) => m.stock === 0).length },
-    { key: 'expiring', label: 'Near Expiry', icon: AlarmClock, count: medicines.filter((m) => isExpiringSoon(m.expiry)).length },
-    { key: 'expired', label: 'Expired', icon: XCircle, count: medicines.filter((m) => isExpired(m.expiry)).length },
-  ];
-
-  const chipActiveStyles = {
-    all: 'border-accent bg-accent text-white',
-    low: 'border-amber-500 bg-amber-500 text-white',
-    out: 'border-red-600 bg-red-600 text-white',
-    expiring: 'border-mustard-deep bg-mustard-deep text-white',
-    expired: 'border-red-600 bg-red-600 text-white',
-  };
-
-  const chipCountStyles = {
-    all: 'bg-accent-soft text-accent',
-    low: 'bg-amber-50 text-amber-600',
-    out: 'bg-red-50 text-red-600',
-    expiring: 'bg-mustard-soft text-mustard-deep',
-    expired: 'bg-red-50 text-red-600',
-  };
-
-  const exportCsv = () => {
-    const headers = ['Name', 'Generic', 'Category', 'Company', 'Batch', 'Stock', 'SellingPrice', 'PurchasePrice', 'Unit', 'Expiry'];
-    const rows = filtered.map((m) => [
-      m.name, m.genericName, m.category, m.company, m.batch, m.stock, m.sellingPrice, m.purchasePrice, m.unit, m.expiry,
-    ]);
-    const csv = [headers, ...rows]
-      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const filtered = (() => {
-    let list = [...medicines];
-
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((m) =>
-        m.name.toLowerCase().includes(q) ||
-        (m.genericName || '').toLowerCase().includes(q) ||
-        (m.category || '').toLowerCase().includes(q) ||
-        (m.company || '').toLowerCase().includes(q) ||
-        (m.batch || '').toLowerCase().includes(q)
-      );
-    }
+  const filtered = useMemo(() => {
+    const isSearching = search.trim() !== '';
+    if (isSearching && (searchLoading || searchingFor !== search.trim())) return [];
+    const base = isSearching ? searchResults : medicines;
+    let list = [...base];
 
     if (categoryFilter !== 'All') {
       list = list.filter((m) => m.category === categoryFilter);
@@ -228,19 +151,9 @@ export default function InventoryPage() {
       list = list.filter((m) => m.company === companyFilter);
     }
 
-    if (stockFilter === 'low') {
-      list = list.filter((m) => m.stock > 0 && m.stock <= m.lowStockThreshold);
-    } else if (stockFilter === 'out') {
-      list = list.filter((m) => m.stock === 0);
-    } else if (stockFilter === 'expiring') {
-      list = list.filter((m) => isExpiringSoon(m.expiry));
-    } else if (stockFilter === 'expired') {
-      list = list.filter((m) => isExpired(m.expiry));
-    }
-
     const sortMap = {
-      newest: (a, b) => new Date(b.expiry || 0) - new Date(a.expiry || 0),
-      oldest: (a, b) => new Date(a.expiry || 0) - new Date(b.expiry || 0),
+      newest: (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
+      oldest: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
       name: (a, b) => a.name.localeCompare(b.name),
       price: (a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0),
       stock: (a, b) => (a.stock || 0) - (b.stock || 0),
@@ -248,7 +161,7 @@ export default function InventoryPage() {
     list.sort(sortMap[sort] || sortMap.newest);
 
     return list;
-  })();
+  }, [medicines, searchResults, searchLoading, searchingFor, search, categoryFilter, companyFilter, sort]);
 
   const limit = 6;
   const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
@@ -279,6 +192,9 @@ export default function InventoryPage() {
         fd.append(key, data[key]);
       }
     }
+    if (role === 'admin' && data.pharmacist) {
+      fd.append('pharmacist', data.pharmacist);
+    }
     if (imageFile) {
       fd.append('image', imageFile);
     }
@@ -297,6 +213,10 @@ export default function InventoryPage() {
     }
     if (!form.manufacturingDate || !form.expiry) {
       setFormError('Manufacturing Date and Expiry Date are required');
+      return;
+    }
+    if (role === 'admin' && !form.pharmacist) {
+      setFormError('Please select a pharmacist for this medicine');
       return;
     }
     if (imageFile && imageFile.size > 2 * 1024 * 1024) {
@@ -363,63 +283,17 @@ export default function InventoryPage() {
       stock: m.stock ?? '0',
       lowStockThreshold: m.lowStockThreshold ?? '10',
       description: m.description || '',
+      pharmacist: m.pharmacist || '',
     });
     setImageFile(null);
     setFormError('');
     setShowModal(m._id);
   };
 
-  const openHistory = (m) => {
-    setHistoryId(m._id);
-    dispatch(fetchStockHistory({ role, params: { medicineId: m._id, limit: 50 } }));
+  const handleView = (id) => {
+    setViewId(id);
+    dispatch(fetchMedicineDetail({ role, id }));
   };
-
-  const openAdjust = (m) => {
-    setAdjustId(m._id);
-    setAdjustForm({ type: 'increase', quantity: '', reason: '', note: '' });
-    setAdjustError('');
-  };
-
-  const handleAdjustStock = async () => {
-    const qty = Number(adjustForm.quantity);
-    if (!qty || qty < 1 || !Number.isInteger(qty)) {
-      const msg = 'Quantity must be a whole number greater than 0';
-      setAdjustError(msg);
-      toast.error(msg);
-      return;
-    }
-    if (!adjustForm.reason.trim()) {
-      const msg = 'Reason is required';
-      setAdjustError(msg);
-      toast.error(msg);
-      return;
-    }
-    try {
-      await dispatch(
-        adjustStock({
-          role,
-          id: adjustId,
-          payload: {
-            type: adjustForm.type,
-            quantity: qty,
-            reason: adjustForm.reason.trim(),
-            note: adjustForm.note.trim() || undefined,
-          },
-        })
-      ).unwrap();
-      toast.success(`Stock ${adjustForm.type === 'increase' ? 'increased' : 'reduced'} by ${qty}`);
-      setAdjustId(null);
-      setAdjustForm({ type: 'increase', quantity: '', reason: '', note: '' });
-      loadData();
-    } catch (err) {
-      const msg = typeof err === 'string' ? err : 'Failed to adjust stock';
-      setAdjustError(msg);
-      toast.error(msg);
-    }
-  };
-
-  const adjustMedicine = adjustId ? medicines.find((x) => x._id === adjustId) : null;
-  const historyMedicine = historyId ? medicines.find((x) => x._id === historyId) : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -433,29 +307,20 @@ export default function InventoryPage() {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h2 className="text-2xl font-bold text-heading md:text-3xl">Inventory Management</h2>
-            <p className="mt-1 text-[14px] text-body">Track medicine stock, reorder levels and expiry.</p>
+            <h2 className="text-2xl font-bold text-heading md:text-3xl">Medicines</h2>
+            <p className="mt-1 text-[14px] text-body">Manage pharmacy medicines and stock.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={exportCsv}
-            className="inline-flex items-center gap-2 rounded-lgx border border-line bg-surface px-4 py-2.5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
-          >
-            <Download size={16} />
-            Export CSV
-          </button>
-          <button
-            onClick={openAdd}
-            className="inline-flex items-center gap-2 rounded-lgx bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
-          >
-            <Plus size={16} />
-            Add Stock
-          </button>
-        </div>
+        <button
+          onClick={openAdd}
+          className="inline-flex items-center gap-2 rounded-lgx bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
+        >
+          <Plus size={16} />
+          Add Medicine
+        </button>
       </div>
 
-      {currentError && !errorDismissed && (
+      {displayError && (
         <div className="flex items-center justify-between gap-3 rounded-lgx border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-600">
           <span>{displayError}</span>
           <button onClick={() => setErrorDismissed(true)} className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-100">
@@ -499,7 +364,7 @@ export default function InventoryPage() {
 
           {filterOpen && (
             <div className="absolute right-0 z-50 mt-2 w-[280px] rounded-xl border border-line bg-surface p-4 shadow-xl">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-body">Filter Inventory</p>
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-body">Filter Medicines</p>
 
               <div className="mb-3">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Category</label>
@@ -513,7 +378,7 @@ export default function InventoryPage() {
                 </select>
               </div>
 
-              <div className="mb-4">
+              <div className="mb-3">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Company</label>
                 <select
                   value={companyFilter}
@@ -559,36 +424,10 @@ export default function InventoryPage() {
         </select>
       </div>
 
-      {/* Stock status chips */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        {chips.map((c) => {
-          const active = stockFilter === c.key;
-          return (
-            <button
-              key={c.key}
-              onClick={() => { setStockFilter(c.key); setPage(1); }}
-              className={`inline-flex items-center gap-2 rounded-lgx border px-4 py-2 text-[13px] font-semibold transition-all ${
-                active ? chipActiveStyles[c.key] : 'border-line bg-surface text-heading hover:bg-bgsecondary'
-              }`}
-            >
-              <c.icon size={15} />
-              {c.label}
-              <span
-                className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${
-                  active ? 'bg-white/20 text-white' : chipCountStyles[c.key]
-                }`}
-              >
-                {c.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* Table */}
       <div className="overflow-x-auto rounded-lgx border border-line bg-surface shadow-card">
         <table className="w-full text-left">
-          <thead className="sticky top-0 z-10 border-b border-line bg-surface">
+          <thead className="border-b border-line">
             <tr>
               <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-body">Name</th>
               <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-body hidden sm:table-cell">Category</th>
@@ -602,75 +441,55 @@ export default function InventoryPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {displayLoading && (
+            {loading && (
               <tr>
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">Loading medicines...</td>
               </tr>
             )}
-            {!displayLoading && paged.length === 0 && (
+            {!loading && search.trim() && (searchLoading || searchingFor !== search.trim()) && (
               <tr>
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
-                  <Pill size={36} className="mx-auto mb-3 text-line" />
-                  No medicines found
+                  <Loader2 size={20} className="mx-auto mb-2 animate-spin text-accent" />
+                  Searching medicines...
                 </td>
               </tr>
             )}
-            {!displayLoading && paged.map((m) => {
+            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
+                  <Pill size={36} className="mx-auto mb-3 text-line" />
+                  No medicines found {search.trim() && <>for <span className="font-medium text-heading">"{search.trim()}"</span></>}
+                </td>
+              </tr>
+            )}
+            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.map((m) => {
               const status = getStatus(m.stock, m.lowStockThreshold);
-              const expired = isExpired(m.expiry);
               const expiring = isExpiringSoon(m.expiry);
               return (
-                <tr key={m._id} className="transition-colors even:bg-bgprimary/35 hover:bg-bgprimary/60">
+                <tr key={m._id} className="transition-colors hover:bg-bgprimary/50">
                   <td className="px-4 py-3 text-[14px] font-medium text-heading">{m.name}</td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <span className={`inline-block rounded-lg px-2 py-1 text-[12px] font-semibold ${categoryColors[m.category] || 'bg-bgsecondary text-body'}`}>
-                      {m.category}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3 text-[13px] text-body hidden sm:table-cell">{m.category}</td>
                   <td className="px-4 py-3 text-[13px] text-body hidden md:table-cell">{m.company}</td>
                   <td className="px-4 py-3 text-[13px] font-mono text-body hidden lg:table-cell">{m.batch}</td>
                   <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">{Number(m.stock).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-[14px] font-semibold text-heading">₹{m.sellingPrice}</td>
-                  <td className={`px-4 py-3 text-right text-[13px] font-semibold hidden sm:table-cell ${expired ? 'text-red-600' : expiring ? 'text-red-600' : 'text-body'}`}>
+                  <td className={`px-4 py-3 text-right text-[13px] font-semibold hidden sm:table-cell ${expiring ? 'text-red-600' : 'text-body'}`}>
                     {formatDate(m.expiry)}
-                    {expired && <XCircle size={13} className="ml-1 inline text-red-600" />}
-                    {!expired && expiring && <AlertTriangle size={13} className="ml-1 inline text-red-500" />}
+                    {expiring && <AlertTriangle size={13} className="ml-1 inline text-red-500" />}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {expired ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1 text-[12px] font-semibold text-red-600">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-600" />
-                        Expired
-                      </span>
-                    ) : (
-                      <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-semibold ${status.color}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                        {status.label}
-                      </span>
-                    )}
+                    <span className={`inline-block rounded-lg px-2 py-1 text-[12px] font-semibold ${status.color}`}>
+                      {status.label}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
-                        onClick={() => setViewId(m._id)}
+                        onClick={() => handleView(m._id)}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
                         title="View details"
                       >
                         <Eye size={15} />
-                      </button>
-                      <button
-                        onClick={() => openHistory(m)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-bgsecondary hover:text-heading"
-                        title="Stock history"
-                      >
-                        <History size={15} />
-                      </button>
-                      <button
-                        onClick={() => openAdjust(m)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-body transition-colors hover:bg-accent-soft hover:text-accent"
-                        title="Adjust stock"
-                      >
-                        <ArrowUpDown size={15} />
                       </button>
                       <button
                         onClick={() => openEdit(m)}
@@ -696,7 +515,7 @@ export default function InventoryPage() {
       </div>
 
       {/* Pagination */}
-      {!displayLoading && totalPages > 1 && (
+      {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
             Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
@@ -739,7 +558,7 @@ export default function InventoryPage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(null)} />
           <div className="relative w-full max-w-[760px] max-h-[90vh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md">
-              <h3 className="text-lg font-bold text-heading">{showModal === 'add' ? 'Add Stock Item' : 'Edit Stock Item'}</h3>
+              <h3 className="text-lg font-bold text-heading">{showModal === 'add' ? 'Add Medicine' : 'Edit Medicine'}</h3>
               <button onClick={() => setShowModal(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
                 <X size={18} />
               </button>
@@ -822,6 +641,16 @@ export default function InventoryPage() {
                 <input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setField('lowStockThreshold', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="10" />
               </div>
 
+              {role === 'admin' && (
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-medium text-heading">Pharmacist *</label>
+                  <select value={form.pharmacist} onChange={(e) => setField('pharmacist', e.target.value)} className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10">
+                    <option value="">Select pharmacist...</option>
+                    {pharmacists.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.email})</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">Description</label>
                 <textarea value={form.description} onChange={(e) => setField('description', e.target.value)} rows={2} className="w-full rounded-lg border border-line bg-bgprimary px-3.5 py-2.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10" placeholder="Optional description" />
@@ -851,7 +680,7 @@ export default function InventoryPage() {
                 disabled={saving}
                 className="h-10 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? 'Saving...' : showModal === 'add' ? 'Add Stock' : 'Save Changes'}
+                {saving ? 'Saving...' : showModal === 'add' ? 'Add Medicine' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -862,32 +691,57 @@ export default function InventoryPage() {
       {viewId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewId(null)} />
-          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-6 py-4">
-              <h3 className="text-lg font-bold text-heading">Stock Item Details</h3>
+          <div className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+            <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-line bg-surface px-6 py-4">
+              <h3 className="text-lg font-bold text-heading">Medicine Details</h3>
               <button onClick={() => setViewId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
                 <X size={18} />
               </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto">
+
             {(() => {
-              const m = medicines.find((x) => x._id === viewId);
+              const listItem = medicines.find((x) => x._id === viewId);
+              const m = viewItem && viewItem._id === viewId ? viewItem : listItem;
               if (!m) return null;
+
+              if (viewLoading) {
+                return (
+                  <div className="flex flex-col items-center justify-center gap-3 px-6 py-16">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                    <span className="text-[13px] text-body">Loading medicine details...</span>
+                  </div>
+                );
+              }
+
+              if (viewError && !m) {
+                return (
+                  <div className="px-6 py-10 text-center text-[13px] text-red-600">
+                    {viewError}
+                  </div>
+                );
+              }
+
               const status = getStatus(m.stock, m.lowStockThreshold);
+              const pharmacistName = pharmacists.find((p) => p._id === m.pharmacist)?.name;
               const rows = [
                 { label: 'Generic Name', value: m.genericName || '—' },
                 { label: 'Category', value: m.category },
                 { label: 'Company', value: m.company || '—' },
                 { label: 'Batch Number', value: m.batch || '—' },
-                { label: 'Unit', value: m.unit.charAt(0).toUpperCase() + m.unit.slice(1) },
+                { label: 'Unit', value: m.unit ? m.unit.charAt(0).toUpperCase() + m.unit.slice(1) : '—' },
                 { label: 'Stock Quantity', value: Number(m.stock).toLocaleString() },
                 { label: 'Low Stock Threshold', value: m.lowStockThreshold },
-                { label: 'Selling Price', value: `₹${m.sellingPrice}` },
-                { label: 'Purchase Price', value: m.purchasePrice ? `₹${m.purchasePrice}` : '—' },
+                { label: 'Selling Price', value: m.sellingPrice != null ? `₹${m.sellingPrice}` : '—' },
+                { label: 'Purchase Price', value: m.purchasePrice != null ? `₹${m.purchasePrice}` : '—' },
                 { label: 'GST', value: m.gst ? `${m.gst}%` : '—' },
                 { label: 'Manufacturing Date', value: formatDate(m.manufacturingDate) },
                 { label: 'Expiry Date', value: formatDate(m.expiry) },
               ];
+              if (role === 'admin') {
+                rows.push({ label: 'Pharmacist', value: pharmacistName || 'Unassigned' });
+              }
               if (m.description) {
                 rows.push({ label: 'Description', value: m.description });
               }
@@ -902,7 +756,7 @@ export default function InventoryPage() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                          <PackagePlus size={22} />
+                          <Pill size={22} />
                         </span>
                         <div>
                           <div className="text-[17px] font-bold text-heading">{m.name}</div>
@@ -927,207 +781,18 @@ export default function InventoryPage() {
               );
             })()}
 
-            <div className="flex items-center justify-end border-t border-line px-6 py-4">
-              <button
-                onClick={() => { const m = medicines.find((x) => x._id === viewId); setViewId(null); openEdit(m); }}
-                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
-              >
-                <Edit2 size={15} />
-                Edit Stock Item
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ADJUST STOCK MODAL */}
-      {adjustId && adjustMedicine && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAdjustId(null)} />
-          <div className="relative w-full max-w-[520px] rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md">
-              <div>
-                <h3 className="text-lg font-bold text-heading">Adjust Stock</h3>
-                <p className="text-[12px] text-body">{adjustMedicine.name} · {adjustMedicine.batch || ''} · Current: <span className="font-semibold text-heading">{Number(adjustMedicine.stock).toLocaleString()}</span></p>
-              </div>
-              <button onClick={() => setAdjustId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
-                <X size={18} />
-              </button>
-            </div>
-
-            {adjustError && (
-              <div className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-3 text-[13px] font-medium text-red-600">
-                {adjustError}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-4 px-6 py-5">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setAdjustForm((f) => ({ ...f, type: 'increase' }))}
-                  className={`rounded-lg border px-4 py-3 text-[14px] font-semibold transition-all ${
-                    adjustForm.type === 'increase'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                      : 'border-line bg-bgprimary text-heading hover:bg-bgsecondary'
-                  }`}
-                >
-                  <span className="block text-[13px]">➤ Increase (+)</span>
-                  Increase stock
-                </button>
-                <button
-                  onClick={() => setAdjustForm((f) => ({ ...f, type: 'reduce' }))}
-                  className={`rounded-lg border px-4 py-3 text-[14px] font-semibold transition-all ${
-                    adjustForm.type === 'reduce'
-                      ? 'border-red-500 bg-red-50 text-red-700'
-                      : 'border-line bg-bgprimary text-heading hover:bg-bgsecondary'
-                  }`}
-                >
-                  <span className="block text-[13px]">➤ Reduce (–)</span>
-                  Reduce stock
-                </button>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Quantity *</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={adjustForm.quantity}
-                  onChange={(e) => setAdjustForm((f) => ({ ...f, quantity: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  placeholder="e.g. 10"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Reason *</label>
-                <input
-                  value={adjustForm.reason}
-                  onChange={(e) => setAdjustForm((f) => ({ ...f, reason: e.target.value }))}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  placeholder="e.g. purchase, damaged, expired, correction, other"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-heading">Note (optional)</label>
-                <textarea
-                  value={adjustForm.note}
-                  onChange={(e) => setAdjustForm((f) => ({ ...f, note: e.target.value }))}
-                  rows={2}
-                  className="w-full rounded-lg border border-line bg-bgprimary px-3.5 py-2.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  placeholder="Optional extra detail"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-line bg-surface/95 px-6 py-4">
-              <button onClick={() => setAdjustId(null)} className="h-10 rounded-lg border border-line bg-surface px-5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary">
-                Cancel
-              </button>
-              <button
-                onClick={handleAdjustStock}
-                disabled={adjusting}
-                className="h-10 rounded-lg bg-accent px-6 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {adjusting ? 'Updating...' : 'Confirm Adjustment'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STOCK HISTORY MODAL */}
-      {historyId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setHistoryId(null)} />
-          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/95 px-6 py-4 backdrop-blur-md">
-              <div>
-                <h3 className="text-lg font-bold text-heading">Stock History</h3>
-                <p className="text-[12px] text-body">{historyMedicine?.name || 'Medicine'} · {historyMedicine?.batch || ''}</p>
-              </div>
-              <button onClick={() => setHistoryId(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-body hover:bg-bgsecondary hover:text-heading">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="px-6 py-5">
-              {historyError && (
-                <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-[13px] font-medium text-red-600">
-                  {historyError}
+            {viewItem && viewItem._id === viewId && (
+                <div className="flex items-center justify-end border-t border-line px-6 py-4">
+                  <button
+                    onClick={() => { setViewId(null); openEdit(viewItem); }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
+                  >
+                    <Edit2 size={15} />
+                    Edit Medicine
+                  </button>
                 </div>
               )}
-              {historyLoading && (
-                <div className="py-12 text-center text-[14px] text-body">Loading history...</div>
-              )}
-              {!historyLoading && historyLogs.length === 0 && (
-                <div className="py-12 text-center text-[14px] text-body">
-                  <History size={36} className="mx-auto mb-3 text-line" />
-                  No stock movements found
-                </div>
-              )}
-              {!historyLoading && historyLogs.length > 0 && (
-                <div className="overflow-x-auto rounded-xl border border-line">
-                  <table className="w-full text-left">
-                    <thead className="border-b border-line bg-bgprimary/50">
-                      <tr>
-                        <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-body">Type</th>
-                        <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-body">Quantity Change</th>
-                        <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-body hidden sm:table-cell">Previous → New</th>
-                        <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-body hidden md:table-cell">Reason / Note</th>
-                        <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-body hidden lg:table-cell">By / Date</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
-                      {historyLogs.map((log) => (
-                        <tr key={log._id} className="transition-colors even:bg-bgprimary/35 hover:bg-bgprimary/60">
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold ${
-                              log.type === 'increase'
-                                ? 'bg-emerald-50 text-emerald-600'
-                                : 'bg-red-50 text-red-600'
-                            }`}>
-                              {log.type === 'increase' ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                              {log.type === 'increase' ? 'INCREASE' : 'REDUCE'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`text-[14px] font-bold ${
-                              log.type === 'increase' ? 'text-emerald-600' : 'text-red-600'
-                            }`}>
-                              {log.type === 'increase' ? '+' : '–'}{log.quantity}
-                            </span>
-                            <span className="ml-1 text-[11.5px] text-body">units</span>
-                          </td>
-                          <td className="px-4 py-3 hidden sm:table-cell">
-                            <span className="text-[13px] font-semibold text-heading">
-                              {log.previousStock} <span className="text-body/60">→</span> {log.newStock}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            <span className="text-[13px] text-body">{log.reason}</span>
-                            {log.note ? <span className="block text-[11.5px] text-body/70">{log.note}</span> : null}
-                          </td>
-                          <td className="px-4 py-3 hidden lg:table-cell">
-                            <span className="block text-[12px] text-body">{log.performedBy?.name || '—'}</span>
-                            <span className="block text-[11px] text-body/70">{formatDate(log.createdAt)}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
 
-            <div className="flex items-center justify-end border-t border-line px-6 py-4">
-              <button
-                onClick={() => setHistoryId(null)}
-                className="h-10 rounded-lg border border-line bg-surface px-5 text-[14px] font-semibold text-heading transition-colors hover:bg-bgsecondary"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
@@ -1141,7 +806,7 @@ export default function InventoryPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
               <AlertTriangle size={22} className="text-red-600" />
             </div>
-            <h3 className="mt-4 text-lg font-bold text-heading">Delete Stock Item</h3>
+            <h3 className="mt-4 text-lg font-bold text-heading">Delete Medicine</h3>
             <p className="mt-2 text-[14px] leading-relaxed text-body">
               Are you sure you want to delete <span className="font-semibold text-heading">{medicines.find((m) => m._id === deleteId)?.name}</span>? This action cannot be undone.
             </p>

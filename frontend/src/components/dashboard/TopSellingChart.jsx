@@ -5,81 +5,87 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  LabelList,
   ResponsiveContainer,
-  Cell,
 } from 'recharts';
 
-function cssVar(name, fallback = '') {
-  if (typeof document === 'undefined') return fallback;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
-export const palette = {
-  accent: cssVar('--color-accent'),
-  accentHover: cssVar('--color-accent-hover'),
-  heading: cssVar('--color-heading'),
-  body: cssVar('--color-body'),
-  line: cssVar('--color-line'),
-  surface: cssVar('--color-surface'),
-  bgPrimary: cssVar('--color-bgprimary'),
-  olive: cssVar('--color-olive'),
-  oliveSoft: cssVar('--color-olive-soft'),
-  oliveDeep: cssVar('--color-olive-deep'),
-  mustard: cssVar('--color-mustard'),
-  mustardSoft: cssVar('--color-mustard-soft'),
-  mustardDeep: cssVar('--color-mustard-deep'),
-  berry: cssVar('--color-berry'),
-  berrySoft: cssVar('--color-berry-soft'),
-  berryDeep: cssVar('--color-berry-deep'),
-  teal: cssVar('--color-teal'),
+const toK = (v) => {
+  const n = Number(v) || 0;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`.replace('.0L', 'L');
+  if (n >= 1000) return `₹${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return `₹${n}`;
 };
 
-const data = [
-  { name: 'Paracetamol 500mg', units: 482 },
-  { name: 'Amoxicillin 250mg', units: 396 },
-  { name: 'Cetirizine 10mg', units: 341 },
-  { name: 'Vitamin D3 60k', units: 268 },
-  { name: 'Azithromycin 500', units: 204 },
-  { name: 'Omeprazole 20mg', units: 158 },
-];
+const shortName = (name = '') => (name.length > 13 ? `${name.slice(0, 12)}…` : name);
 
-const maxUnits = Math.max(...data.map((d) => d.units));
-
-export default function TopSellingChart() {
+const CustomTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
   return (
-    <div className="h-[300px] w-full">
+    <div className="rounded-lgx border border-line bg-surface px-3.5 py-2.5 shadow-float">
+      <p className="text-[12px] font-semibold text-heading">{d?.name || '—'}</p>
+      <p className="mt-0.5 font-display text-[14px] font-bold text-teal-deep">
+        {d ? toK(d.saleAmount) : '—'}
+      </p>
+    </div>
+  );
+};
+
+export default function TopSellingChart({ data = [] }) {
+  const chartData = data.map((d, i) => {
+    const name = d.name || `Item ${i + 1}`;
+    return {
+      name,
+      shortName: shortName(name),
+      saleAmount: Number(d.saleAmount) || 0,
+      topLabel: toK(Number(d.saleAmount) || 0),
+    };
+  });
+
+  if (!chartData.length) {
+    return (
+      <div className="flex h-[280px] items-center justify-center rounded-lgx border border-dashed border-line bg-bgprimary/40">
+        <p className="text-[13px] text-body/70">No top selling medicines yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 w-full flex-1">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 0, right: 28, bottom: 0, left: 10 }} barCategoryGap="28%">
-          <CartesianGrid strokeDasharray="3 3" stroke={palette.line} horizontal={false} />
-          <XAxis type="number" tick={{ fontSize: 12, fill: palette.body }} tickLine={false} axisLine={false} />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={135}
-            tick={{ fontSize: 12.5, fill: palette.heading }}
+        <BarChart data={chartData} margin={{ top: 24, right: 8, bottom: 6, left: 0 }}>
+          <CartesianGrid strokeDasharray="4 4" stroke="var(--color-line)" vertical={false} />
+          <XAxis
+            dataKey="shortName"
+            tick={{ fontSize: 11.5, fill: 'var(--color-body)' }}
             tickLine={false}
-            axisLine={false}
+            axisLine={{ stroke: 'var(--color-line)' }}
+            interval={0}
+            height={34}
+            tickMargin={8}
           />
-          <Tooltip
-            cursor={{ fill: palette.bgPrimary }}
-            contentStyle={{
-              background: palette.surface,
-              border: `1px solid ${palette.line}`,
-              borderRadius: 12,
-              boxShadow: '0 8px 24px rgba(43,33,27,0.08)',
-              fontSize: 13,
-              color: palette.heading,
-            }}
-            formatter={(v) => [`${v} units`, 'Sold']}
+          <YAxis
+            tick={{ fontSize: 12, fill: 'var(--color-body)' }}
+            tickLine={false}
+            axisLine={{ stroke: 'var(--color-line)' }}
+            tickFormatter={toK}
+            width={56}
           />
-          <Bar dataKey="units" radius={[0, 8, 8, 0]} barSize={18}>
-            {data.map((d) => (
-              <Cell
-                key={d.name}
-                fill={palette.accent}
-                fillOpacity={0.35 + 0.65 * (d.units / maxUnits)}
-              />
-            ))}
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--color-bgprimary)', opacity: 0.5 }} />
+          <Bar
+            dataKey="saleAmount"
+            name="Revenue"
+            fill="var(--color-teal)"
+            radius={[6, 6, 0, 0]}
+            barSize={36}
+            minPointSize={3}
+          >
+            <LabelList
+              dataKey="topLabel"
+              position="top"
+              offset={6}
+              style={{ fontSize: 10.5, fill: 'var(--color-heading)', fontWeight: 700 }}
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

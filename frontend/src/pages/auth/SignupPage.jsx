@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Mail, Lock, Eye, EyeOff, User, Phone, KeyRound, ArrowLeft, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { register, verifyOtp, resendOtp, clearError } from '../../features/authSlice.js';
 
 export default function SignupPage() {
@@ -21,8 +22,11 @@ export default function SignupPage() {
     e.preventDefault();
     const result = await dispatch(register({ name, email, phone, password, role: 'pharmacist' }));
     if (result.meta.requestStatus === 'fulfilled') {
+      toast.success('Account created — OTP sent to your email');
       setOtpSentTo(email);
       setStep('otp');
+    } else {
+      toast.error(result.payload || 'Registration failed');
     }
   };
 
@@ -30,12 +34,20 @@ export default function SignupPage() {
     e.preventDefault();
     const result = await dispatch(verifyOtp({ email, otp }));
     if (result.meta.requestStatus === 'fulfilled') {
+      toast.success('Account verified — welcome to MedHeritage!');
       navigate('/pharmacist');
+    } else {
+      toast.error(result.payload || 'OTP verification failed');
     }
   };
 
   const handleResend = async () => {
-    await dispatch(resendOtp({ email }));
+    const result = await dispatch(resendOtp({ email }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      toast.success('OTP re-sent to your email');
+    } else {
+      toast.error(result.payload || 'Failed to resend OTP');
+    }
   };
 
   const handleBack = () => {

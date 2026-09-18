@@ -1,12 +1,49 @@
+// -----------------------------------------------------------------------------
+// Auth Service —
+// Registration, OTP verification and login of users
+// -----------------------------------------------------------------------------
+
 import api from './api';
 import { authRoutes } from './authRoutes';
 
-export const register = (payload) => api.post(authRoutes.REGISTER, payload);
+// REGISTER A NEW USER
+// POST /auth/register
+export const register = async (payload) => {
+  const response = await api.post(authRoutes.REGISTER, payload);
+  return response;
+};
 
-export const verifyOtp = (payload) => api.post(authRoutes.VERIFY_OTP, payload);
+// VERIFY EMAIL OTP
+// POST /auth/verify-otp
+export const verifyOtp = async (payload) => {
+  const response = await api.post(authRoutes.VERIFY_OTP, payload);
+  return response;
+};
 
-export const resendOtp = (payload) => api.post(authRoutes.RESEND_OTP, payload);
+// RESEND EMAIL OTP
+// POST /auth/resend-otp
+export const resendOtp = async (payload) => {
+  const response = await api.post(authRoutes.RESEND_OTP, payload);
+  return response;
+};
 
-export const login = (payload) => api.post(authRoutes.LOGIN, payload);
+// LOGIN USER
+// POST /auth/login
+export const login = async (payload) => {
+  const response = await api.post(authRoutes.LOGIN, payload);
+  return response;
+};
 
-export const logout = () => api.post(authRoutes.LOGOUT);
+// LOGOUT USER
+// POST /auth/logout
+export const logout = async () => {
+  const response = await api.post(authRoutes.LOGOUT);
+  return response;
+};
+
+// FORGOT PASSWORD (3 steps: send / verify / reset)
+// POST /auth/forgot-password
+export const forgotPassword = async (payload) => {
+  const response = await api.post(authRoutes.FORGOT_PASSWORD, payload);
+  return response;
+};

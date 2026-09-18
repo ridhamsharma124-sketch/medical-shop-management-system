@@ -5,6 +5,7 @@ import {
   resendOtp as resendOtpRequest,
   login as loginRequest,
   logout as logoutRequest,
+  forgotPassword as forgotPasswordRequest,
 } from '../auth/authService';
 
 const getStoredUser = () => {
@@ -77,6 +78,18 @@ export const logout = createAsyncThunk('auth/logout', async (_, { rejectWithValu
   }
 });
 
+export const forgotPassword = createAsyncThunk(
+  'auth/forgotPassword',
+  async (payload, { rejectWithValue }) => {
+    try {
+      const { data } = await forgotPasswordRequest(payload);
+      return data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Request failed');
+    }
+  }
+);
+
 const initialState = {
   user: getStoredUser(),
   status: 'idle',
@@ -141,6 +154,18 @@ const authSlice = createSlice({
         state.user = null;
         state.status = 'idle';
         state.error = null;
+      })
+      .addCase(forgotPassword.pending, (state) => {
+        state.status = 'loading';
+        state.error = null;
+      })
+      .addCase(forgotPassword.fulfilled, (state) => {
+        state.status = 'succeeded';
+        state.error = null;
+      })
+      .addCase(forgotPassword.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload;
       });
   },
 });
