@@ -32,12 +32,8 @@ import {
   Cell,
 } from 'recharts';
 import toast from 'react-hot-toast';
-import {
-  fetchSalesBillsList,
-  fetchSalesBillDetail,
-  createNewSalesBill,
-  clearSalesDetail,
-} from '../features/salesSlice';
+import { fetchSalesBillsList, fetchSalesBillDetail, createNewSalesBill, clearSalesDetail } from '../features/salesSlice';
+import { fetchSalesBills as fetchSalesBillsApi } from '../auth/salesService';
 import { fetchCustomersList } from '../features/customerSlice';
 import { fetchAllPharmacists } from '../features/pharmacistSlice';
 import { fetchMedicinesList } from '../features/medicineSlice';
@@ -90,6 +86,12 @@ export default function BillingPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [thisMonthOnly, setThisMonthOnly] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState('');
+  const [retryTick, setRetryTick] = useState(0);
+  const LIMIT = 8;
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ customerId: '', pharmacistId: role === 'admin' ? '' : user?._id, paymentMethod: 'cash', discountAmount: 0 });
   const [items, setItems] = useState([emptyItem]);
@@ -109,26 +111,38 @@ export default function BillingPage() {
     return () => dispatch(clearSalesDetail());
   }, [loadData, dispatch, role]);
 
-  const filtered = useMemo(() => {
-    let list = [...bills];
+  useEffect(() => {
+    let active = true;
+    const params = { page, limit: LIMIT };
+    if (search.trim()) params.invoiceNumber = search.trim();
     if (thisMonthOnly) {
       const now = new Date();
-      list = list.filter((b) => {
-        const d = new Date(b.billDate || b.createdAt);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      });
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      params.startDate = from.toISOString().split('T')[0];
+      params.endDate = to.toISOString().split('T')[0];
     }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((b) =>
-        b.invoiceNumber?.toLowerCase().includes(q) ||
-        (b.customerName || b.customer?.name || '').toLowerCase().includes(q) ||
-        (b.customerPhone || '').toLowerCase().includes(q) ||
-        (typeof b.pharmacist === 'object' && b.pharmacist?.name || '').toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [bills, search, thisMonthOnly]);
+    const t = setTimeout(() => {
+      setRowsLoading(true);
+      setRowsError('');
+      fetchSalesBillsApi(role, params)
+        .then((res) => {
+          if (!active) return;
+          setRows(res.data?.data || []);
+          setRowsTotal(res.data?.total || 0);
+        })
+        .catch((err) => {
+          if (active) setRowsError(err.response?.data?.message || 'Failed to load bills');
+        })
+        .finally(() => {
+          if (active) setRowsLoading(false);
+        });
+    }, search.trim() ? 300 : 0);
+    return () => {
+      clearTimeout(t);
+      active = false;
+    };
+  }, [role, page, search, thisMonthOnly, retryTick]);
 
   const todayCount = useMemo(() => {
     const today = new Date().toDateString();
@@ -176,9 +190,9 @@ export default function BillingPage() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [bills]);
 
-  const limit = 8;
-  const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
-  const paged = filtered.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.max(Math.ceil((rowsTotal || 0) / LIMIT), 1);
+  const displayStart = rowsTotal === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const displayEnd = Math.min(page * LIMIT, rowsTotal || 0);
 
   const fallbackCustomers = useMemo(() => {
     const phId = form.pharmacistId;
@@ -297,6 +311,7 @@ export default function BillingPage() {
       setForm({ customerId: '', pharmacistId: role === 'admin' ? '' : user?._id, paymentMethod: 'cash', discountAmount: 0 });
       setItems([emptyItem]);
       loadData();
+      setRetryTick((t) => t + 1);
     } catch (err) {
       const msg = typeof err === 'string' ? err : 'Failed to create bill';
       setFormError(msg);
@@ -346,10 +361,13 @@ export default function BillingPage() {
         </button>
       </div>
 
-      {loadError && (
+      {(loadError || rowsError) && (
         <div className="flex items-center justify-between gap-3 rounded-lgx border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-600 print:hidden">
-          <span>{loadError}</span>
-          <button onClick={loadData} className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100">
+          <span>{loadError || rowsError}</span>
+          <button
+            onClick={() => { loadData(); setRetryTick((t) => t + 1); }}
+            className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100"
+          >
             Retry
           </button>
         </div>
@@ -483,12 +501,12 @@ export default function BillingPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {loading && (
+            {rowsLoading && (
               <tr>
                 <td colSpan={role === 'admin' ? 7 : 6} className="px-4 py-16 text-center text-[14px] text-body">Loading bills...</td>
               </tr>
             )}
-            {!loading && paged.length === 0 && (
+            {!rowsLoading && rows.length === 0 && (
               <tr>
                 <td colSpan={role === 'admin' ? 7 : 6} className="px-4 py-16 text-center text-[14px] text-body">
                   <Receipt size={36} className="mx-auto mb-3 text-line" />
@@ -496,7 +514,7 @@ export default function BillingPage() {
                 </td>
               </tr>
             )}
-            {!loading && paged.map((b) => (
+            {!rowsLoading && rows.map((b) => (
               <tr key={b._id} className="cursor-pointer transition-colors even:bg-bgprimary/35 hover:bg-bgprimary/60" onClick={() => openView(b._id)}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -544,10 +562,10 @@ export default function BillingPage() {
       </div>
 
       {/* Pagination */}
-      {!loading && totalPages > 1 && (
+      {!rowsLoading && totalPages > 1 && (
         <div className="flex items-center justify-between print:hidden">
           <span className="text-[13px] text-body">
-            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
+            Showing {displayStart}–{displayEnd} of {rowsTotal || 0}
           </span>
           <div className="flex items-center gap-1">
             <button

@@ -29,6 +29,7 @@ import PharmacistProfilePage from './pages/pharmacists/ProfilePage';
 import BillingPage from './pages/BillingPage';
 import ReportsPage from './pages/ReportsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import PrivacyPolicyPage from './pages/landing-page/PrivacyPolicyPage';
 import './App.css';
 
 function LandingPage() {
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/admin" element={<DashboardLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="medicines" element={<MedicinesPage />} />

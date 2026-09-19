@@ -1,8 +1,12 @@
 import { Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-const productLinks = ['Features', 'Pricing', 'Integrations', 'API Docs'];
-const companyLinks = ['About Us', 'Careers', 'Blog', 'Contact'];
-const legalLinks = ['Privacy Policy', 'Terms of Service', 'Cookie Policy'];
+const quickLinks = [
+  { label: 'Home', href: '#home' },
+  { label: 'About', href: '#about' },
+  { label: 'Features', href: '#features' },
+  { label: 'Contact', href: '#contact' },
+];
 
 export default function Footer() {
   return (
@@ -22,9 +26,15 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-wrap gap-10 lg:gap-14">
-            <FooterCol title="Product" links={productLinks} />
-            <FooterCol title="Company" links={companyLinks} />
-            <FooterCol title="Legal" links={legalLinks} />
+            <FooterCol title="Quick Links" links={quickLinks} />
+            <FooterCol
+              title="Legal"
+              links={[
+                { label: 'Privacy Policy', to: '/privacy-policy' },
+                { label: 'Terms of Service', to: '/privacy-policy' },
+                { label: 'Cookie Policy', to: '/privacy-policy' },
+              ]}
+            />
           </div>
         </div>
 
@@ -32,13 +42,7 @@ export default function Footer() {
           <span className="text-[13px] text-heading/45">
             &copy; {new Date().getFullYear()} MedHeritage. All rights reserved.
           </span>
-          <div className="flex gap-5 text-[13px] text-heading/55">
-            {['Twitter', 'LinkedIn', 'GitHub'].map((s) => (
-              <a key={s} href="#" className="transition-colors hover:text-accent">
-                {s}
-              </a>
-            ))}
-          </div>
+          <span className="text-[13px] text-heading/55">Powered by MedHeritage</span>
         </div>
       </div>
     </footer>
@@ -46,17 +50,41 @@ export default function Footer() {
 }
 
 function FooterCol({ title, links }) {
+  const scrollTo = (e, href) => {
+    e.preventDefault();
+    if (window.location.pathname !== '/') {
+      window.location.assign('/#' + href.slice(1));
+      return;
+    }
+    document.querySelector(href)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div>
       <h4 className="mb-4 text-[13px] font-medium uppercase tracking-[0.06em] text-heading/55">{title}</h4>
       <ul className="flex flex-col gap-2.5">
-        {links.map((l) => (
-          <li key={l}>
-            <a href="#" className="text-sm text-heading/70 transition-colors hover:text-heading">
-              {l}
-            </a>
-          </li>
-        ))}
+        {links.map((l) =>
+          l.to ? (
+            <li key={l.label}>
+              <Link
+                to={l.to}
+                className="text-sm text-heading/70 transition-colors hover:text-heading"
+              >
+                {l.label}
+              </Link>
+            </li>
+          ) : (
+            <li key={l.label}>
+              <a
+                href={l.href}
+                onClick={(e) => scrollTo(e, l.href)}
+                className="text-sm text-heading/70 transition-colors hover:text-heading"
+              >
+                {l.label}
+              </a>
+            </li>
+          )
+        )}
       </ul>
     </div>
   );

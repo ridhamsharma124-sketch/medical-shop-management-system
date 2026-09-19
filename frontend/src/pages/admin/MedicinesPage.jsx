@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import {
@@ -18,10 +18,9 @@ import {
   AlertTriangle,
   Filter,
   ImagePlus,
-  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { fetchMedicinesList, fetchMedicineDetail, searchMedicinesList, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
+import { fetchMedicinesList, fetchMedicineDetail, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 import CustomSelect from '../../components/ui/CustomSelect';
 
@@ -84,12 +83,11 @@ export default function MedicinesPage() {
   const location = useLocation();
   const base = location.pathname.startsWith('/pharmacist') ? '/pharmacist' : '/admin';
   const dispatch = useDispatch();
-  const { items: medicines, loading, error: loadError, viewItem, viewLoading, viewError, searchResults, searchLoading } = useSelector((state) => state.medicines);
+  const { items: medicines, loading, error: loadError, total: totalMedicines, viewItem, viewLoading, viewError } = useSelector((state) => state.medicines);
   const { items: pharmacists } = useSelector((state) => state.pharmacists);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const displayError = loadError && !errorDismissed ? loadError : '';
   const [search, setSearch] = useState('');
-  const [searchingFor, setSearchingFor] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [categoryDraft, setCategoryDraft] = useState('');
@@ -111,29 +109,30 @@ export default function MedicinesPage() {
   const [deleting, setDeleting] = useState(false);
   const [viewId, setViewId] = useState(null);
 
+  const LIMIT = 6;
+
   const loadData = useCallback(() => {
-    dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
-  }, [dispatch, role]);
+    const params = {
+      search: search.trim() || undefined,
+      category: categoryFilter || undefined,
+      company: companyFilter || undefined,
+      sort,
+      page,
+      limit: LIMIT,
+    };
+    dispatch(fetchMedicinesList({ role, params }));
+  }, [dispatch, role, search, categoryFilter, companyFilter, sort, page]);
 
   useEffect(() => {
-    const t = setTimeout(() => loadData(), 0);
+    const t = setTimeout(() => loadData(), search.trim() ? 300 : 0);
     return () => clearTimeout(t);
-  }, [loadData]);
+  }, [loadData, search]);
 
   useEffect(() => {
     if (role === 'admin') {
       dispatch(fetchAllPharmacists({ page: 1, limit: 200 }));
     }
   }, [dispatch, role]);
-
-  useEffect(() => {
-    if (!search.trim()) return undefined;
-    const t = setTimeout(() => {
-      setSearchingFor(search.trim());
-      dispatch(searchMedicinesList({ role, params: { q: search.trim(), limit: 200 } }));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [search, role, dispatch]);
 
   useEffect(() => {
     if (!filterOpen && !sortOpen && !gstOpen) return undefined;
@@ -163,35 +162,10 @@ export default function MedicinesPage() {
     setFilterOpen(false);
   };
 
-  const filtered = useMemo(() => {
-    const isSearching = search.trim() !== '';
-    if (isSearching && (searchLoading || searchingFor !== search.trim())) return [];
-    const base = isSearching ? searchResults : medicines;
-    let list = [...base];
-
-    if (categoryFilter) {
-      list = list.filter((m) => (m.category || '').toLowerCase().includes(categoryFilter.toLowerCase()));
-    }
-
-    if (companyFilter) {
-      list = list.filter((m) => (m.company || '').toLowerCase().includes(companyFilter.toLowerCase()));
-    }
-
-    const sortMap = {
-      newest: (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
-      oldest: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
-      name: (a, b) => a.name.localeCompare(b.name),
-      price: (a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0),
-      stock: (a, b) => (a.stock || 0) - (b.stock || 0),
-    };
-    list.sort(sortMap[sort] || sortMap.newest);
-
-    return list;
-  }, [medicines, searchResults, searchLoading, searchingFor, search, categoryFilter, companyFilter, sort]);
-
-  const limit = 6;
-  const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
-  const paged = filtered.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.max(Math.ceil((totalMedicines || 0) / LIMIT), 1);
+  const paged = medicines;
+  const displayStart = totalMedicines === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const displayEnd = Math.min(page * LIMIT, totalMedicines ?? 0);
 
   const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -475,15 +449,7 @@ export default function MedicinesPage() {
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">Loading medicines...</td>
               </tr>
             )}
-            {!loading && search.trim() && (searchLoading || searchingFor !== search.trim()) && (
-              <tr>
-                <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
-                  <Loader2 size={20} className="mx-auto mb-2 animate-spin text-accent" />
-                  Searching medicines...
-                </td>
-              </tr>
-            )}
-            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.length === 0 && (
+            {!loading && paged.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
                   <Pill size={36} className="mx-auto mb-3 text-line" />
@@ -491,7 +457,7 @@ export default function MedicinesPage() {
                 </td>
               </tr>
             )}
-            {!loading && !(search.trim() && (searchLoading || searchingFor !== search.trim())) && paged.map((m) => {
+            {!loading && paged.map((m) => {
               const status = getStatus(m.stock, m.lowStockThreshold);
               const expiring = isExpiringSoon(m.expiry);
               return (
@@ -547,7 +513,7 @@ export default function MedicinesPage() {
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
-            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
+            Showing {displayStart}–{displayEnd} of {totalMedicines ?? 0}
           </span>
           <div className="flex items-center gap-1">
             <button

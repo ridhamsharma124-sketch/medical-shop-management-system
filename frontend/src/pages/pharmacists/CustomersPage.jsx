@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fetchCustomersList, createNewCustomer, updateExistingCustomer, deleteExistingCustomer, fetchCustomerDetails } from '../../features/customerSlice';
+import { fetchCustomers as fetchCustomersApi } from '../../auth/customerService';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 import CustomSelect from '../../components/ui/CustomSelect';
 
@@ -90,6 +91,13 @@ export default function CustomersPage() {
   const [monthOnly, setMonthOnly] = useState(false);
   const [phMenuOpen, setPhMenuOpen] = useState(false);
   const phMenuRef = useRef(null);
+  const [rows, setRows] = useState([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState('');
+  const [retryTick, setRetryTick] = useState(0);
+  const clientSide = monthOnly;
+  const LIMIT = 5;
 
   const loadData = useCallback(() => {
     dispatch(fetchCustomersList({ role, params: { limit: 200 } }));
@@ -108,6 +116,34 @@ export default function CustomersPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [phMenuOpen]);
+
+  useEffect(() => {
+    if (clientSide) return undefined;
+    let active = true;
+    const params = { page, limit: LIMIT };
+    if (phFilter !== 'all') params.pharmacist = phFilter;
+    if (search.trim()) params.name = search.trim();
+    const t = setTimeout(() => {
+      setRowsLoading(true);
+      setRowsError('');
+      fetchCustomersApi(role, params)
+        .then((res) => {
+          if (!active) return;
+          setRows(res.data?.data || []);
+          setRowsTotal(res.data?.total || 0);
+        })
+        .catch((err) => {
+          if (active) setRowsError(err.response?.data?.message || 'Failed to load customers');
+        })
+        .finally(() => {
+          if (active) setRowsLoading(false);
+        });
+    }, search.trim() ? 300 : 0);
+    return () => {
+      clearTimeout(t);
+      active = false;
+    };
+  }, [clientSide, role, page, search, phFilter, retryTick]);
 
   const filtered = useMemo(() => {
     let list = [...customers];
@@ -153,9 +189,13 @@ export default function CustomersPage() {
     [customers]
   );
 
-  const limit = 5;
-  const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
-  const paged = filtered.slice((page - 1) * limit, page * limit);
+  const paged = filtered.slice((page - 1) * LIMIT, page * LIMIT);
+  const tableTotal = clientSide ? filtered.length : rowsTotal;
+  const tableRows = clientSide ? paged : rows;
+  const tableLoading = clientSide ? loading : rowsLoading;
+  const totalPages = Math.max(Math.ceil(tableTotal / LIMIT), 1);
+  const displayStart = tableTotal === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const displayEnd = Math.min(page * LIMIT, tableTotal || 0);
 
   const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -206,6 +246,7 @@ export default function CustomersPage() {
       }
       setShowModal(null);
       setForm(emptyCustomer);
+      setRetryTick((t) => t + 1);
     } catch (err) {
       const msg = typeof err === 'string' ? err : 'Failed to save customer';
       setFormError(msg);
@@ -221,6 +262,7 @@ export default function CustomersPage() {
       await dispatch(deleteExistingCustomer({ role, id: deleteId })).unwrap();
       toast.success('Customer deleted successfully');
       setDeleteId(null);
+      setRetryTick((t) => t + 1);
     } catch (err) {
       toast.error(typeof err === 'string' ? err : 'Failed to delete customer');
       setDeleteId(null);
@@ -264,10 +306,13 @@ export default function CustomersPage() {
         </button>
       </div>
 
-      {loadError && (
+      {(loadError || rowsError) && (
         <div className="flex items-center justify-between gap-3 rounded-lgx border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-600">
-          <span>{loadError}</span>
-          <button onClick={loadData} className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100">
+          <span>{loadError || rowsError}</span>
+          <button
+            onClick={() => { loadData(); setRetryTick((t) => t + 1); }}
+            className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100"
+          >
             Retry
           </button>
         </div>
@@ -375,12 +420,12 @@ export default function CustomersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {loading && (
+            {tableLoading && (
               <tr>
                 <td colSpan={role === 'admin' ? 6 : 5} className="px-4 py-16 text-center text-[14px] text-body">Loading customers...</td>
               </tr>
             )}
-            {!loading && paged.length === 0 && (
+            {!tableLoading && tableRows.length === 0 && (
               <tr>
                 <td colSpan={role === 'admin' ? 6 : 5} className="px-4 py-16 text-center text-[14px] text-body">
                   <Users size={36} className="mx-auto mb-3 text-line" />
@@ -388,7 +433,7 @@ export default function CustomersPage() {
                 </td>
               </tr>
             )}
-            {!loading && paged.map((c) => (
+            {!tableLoading && tableRows.map((c) => (
               <tr key={c._id} className="transition-colors even:bg-bgprimary/35 hover:bg-bgprimary/60">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -449,10 +494,10 @@ export default function CustomersPage() {
       </div>
 
       {/* Pagination */}
-      {!loading && totalPages > 1 && (
+      {!tableLoading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
-            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
+            Showing {displayStart}–{displayEnd} of {tableTotal || 0}
           </span>
           <div className="flex items-center gap-1">
             <button

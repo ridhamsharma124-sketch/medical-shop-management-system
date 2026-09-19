@@ -21,6 +21,22 @@ export default function SignupPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!name.trim() || !email.trim() || !phone.trim() || !password) {
+      toast.error('Please fill all the required fields');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+    if (!/^\+?[0-9]{10,15}$/.test(phone.trim())) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+    if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(password)) {
+      toast.error('Password must be 8+ characters, with 1 uppercase, 1 number and 1 special character');
+      return;
+    }
     const result = await dispatch(register({ name, email, phone, password, role: 'pharmacist' }));
     if (result.meta.requestStatus === 'fulfilled') {
       toast.success('Account created — OTP sent to your email');
@@ -60,7 +76,7 @@ export default function SignupPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[45fr_55fr]">
       {/* Left — image with overlay + bottom-aligned text */}
-      <div className="relative hidden h-screen overflow-hidden lg:block">
+      <div className="relative hidden h-screen overflow-hidden lg:sticky lg:top-0 lg:block">
         <img
           src="/auth-bg.jpg"
           alt="Medicine shelf in a pharmacy"
@@ -283,6 +299,18 @@ export default function SignupPage() {
               Log In
             </Link>
           </p>
+
+          <div className="mt-8 flex flex-col items-center gap-2 border-t border-line pt-6 text-[12.5px]">
+            <span className="text-body">
+              Powered by <span className="font-semibold text-heading">MedHeritage</span>
+            </span>
+            <Link
+              to="/privacy-policy"
+              className="font-medium text-accent transition-opacity hover:opacity-80"
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </div>
     </div>

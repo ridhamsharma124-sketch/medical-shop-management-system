@@ -22,7 +22,7 @@ export default function Hero() {
               to="/signup"
               className="inline-flex items-center gap-2 rounded-lgx bg-accent px-7 py-3.5 text-[15px] font-semibold text-white transition-all hover:-translate-y-px hover:bg-accent-hover"
             >
-              Get Started Free
+              Get Started
               <ArrowRight size={18} />
             </Link>
             <a

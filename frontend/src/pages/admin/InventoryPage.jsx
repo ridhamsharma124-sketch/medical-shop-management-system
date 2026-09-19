@@ -36,6 +36,8 @@ import toast from 'react-hot-toast';
 import { fetchMedicinesList, fetchMedicineDetail, createNewMedicine, updateExistingMedicine, deleteExistingMedicine } from '../../features/medicineSlice';
 import { adjustStock, fetchStockHistory, fetchMedicinesByStatus } from '../../features/inventorySlice';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
+import { fetchMedicines as fetchMedicinesApi } from '../../auth/medicineService';
+import { fetchMedicinesByStatus as fetchMedicinesByStatusApi } from '../../auth/inventoryService';
 import { exportTablePdf, exportExcel } from '../../utils/exportUtils';
 import CustomSelect from '../../components/ui/CustomSelect';
 
@@ -124,15 +126,19 @@ export default function InventoryPage() {
     const f = searchParams.get('filter');
     return f && valid.includes(f) ? f : 'all';
   });
-  const { items: medicinesAll, loading, error: loadError, viewItem, viewLoading, viewError } = useSelector((state) => state.medicines);
+  const { items: medicinesAll, loading, error: loadError, total: totalMedicines, viewItem, viewLoading, viewError } = useSelector((state) => state.medicines);
   const { items: pharmacists } = useSelector((state) => state.pharmacists);
-  const { statusItems, statusLoading, statusError, historyLogs, historyLoading, historyError, adjusting } = useSelector((state) => state.inventory);
+  const { statusItems, statusTotal, statusLoading, statusError, historyLogs, historyLoading, historyError, adjusting } = useSelector((state) => state.inventory);
   const activeStatus = stockFilter !== 'all';
   const medicines = activeStatus ? statusItems : medicinesAll;
+  const tableTotal = activeStatus ? statusTotal : totalMedicines;
   const displayLoading = activeStatus ? statusLoading : loading;
   const currentError = activeStatus ? statusError : loadError;
   const displayError = currentError && !errorDismissed ? currentError : '';
   const [page, setPage] = useState(1);
+  const [chipCounts, setChipCounts] = useState(null);
+  const [chipTick, setChipTick] = useState(0);
+  const LIMIT = 6;
   const [showModal, setShowModal] = useState(null);
   const [form, setForm] = useState(emptyMedicine);
   const [imageFile, setImageFile] = useState(null);
@@ -173,21 +179,55 @@ export default function InventoryPage() {
 
   const loadData = useCallback(() => {
     if (stockFilter === 'all') {
-      dispatch(fetchMedicinesList({ role, params: { sort: 'newest', limit: 200 } }));
+      const params = {
+        search: search.trim() || undefined,
+        category: categoryFilter || undefined,
+        company: companyFilter || undefined,
+        sort,
+        page,
+        limit: LIMIT,
+      };
+      dispatch(fetchMedicinesList({ role, params }));
     } else {
-      dispatch(fetchMedicinesByStatus({ role, params: { status: statusMap[stockFilter], limit: 200, all: 'true' } }));
+      dispatch(fetchMedicinesByStatus({ role, params: { status: statusMap[stockFilter], page, limit: LIMIT } }));
     }
-  }, [dispatch, role, stockFilter]);
+  }, [dispatch, role, stockFilter, search, categoryFilter, companyFilter, sort, page]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const t = setTimeout(() => loadData(), search.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [loadData, search]);
 
   useEffect(() => {
     if (role === 'admin') {
       dispatch(fetchAllPharmacists({ page: 1, limit: 200 }));
     }
   }, [dispatch, role]);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetchMedicinesApi(role, { limit: 1 }),
+      fetchMedicinesByStatusApi(role, { status: 'low', limit: 1 }),
+      fetchMedicinesByStatusApi(role, { status: 'outOfStock', limit: 1 }),
+      fetchMedicinesByStatusApi(role, { status: 'nearExpiry', limit: 1 }),
+      fetchMedicinesByStatusApi(role, { status: 'expired', limit: 1 }),
+    ])
+      .then((res) => {
+        if (!active) return;
+        setChipCounts({
+          all: res[0].data?.total || 0,
+          low: res[1].data?.total || 0,
+          out: res[2].data?.total || 0,
+          expiring: res[3].data?.total || 0,
+          expired: res[4].data?.total || 0,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [role, chipTick]);
 
   useEffect(() => {
     if (!filterOpen) return undefined;
@@ -225,11 +265,11 @@ export default function InventoryPage() {
   };
 
   const chips = [
-    { key: 'all', label: 'All', icon: Package, count: medicines.length },
-    { key: 'low', label: 'Low Stock', icon: AlertTriangle, count: medicines.filter((m) => m.stock > 0 && m.stock <= m.lowStockThreshold).length },
-    { key: 'out', label: 'Out of Stock', icon: PackageX, count: medicines.filter((m) => m.stock === 0).length },
-    { key: 'expiring', label: 'Near Expiry', icon: AlarmClock, count: medicines.filter((m) => isExpiringSoon(m.expiry)).length },
-    { key: 'expired', label: 'Expired', icon: XCircle, count: medicines.filter((m) => isExpired(m.expiry)).length },
+    { key: 'all', label: 'All', icon: Package, count: chipCounts ? chipCounts.all : '…' },
+    { key: 'low', label: 'Low Stock', icon: AlertTriangle, count: chipCounts ? chipCounts.low : '…' },
+    { key: 'out', label: 'Out of Stock', icon: PackageX, count: chipCounts ? chipCounts.out : '…' },
+    { key: 'expiring', label: 'Near Expiry', icon: AlarmClock, count: chipCounts ? chipCounts.expiring : '…' },
+    { key: 'expired', label: 'Expired', icon: XCircle, count: chipCounts ? chipCounts.expired : '…' },
   ];
 
   const chipActiveStyles = {
@@ -248,73 +288,47 @@ export default function InventoryPage() {
     expired: 'bg-red-50 text-red-600',
   };
 
-  const exportInventory = (format) => {
-    const filename = `inventory-${new Date().toISOString().slice(0, 10)}`;
-    const headers = ['Name', 'Generic', 'Category', 'Company', 'Batch', 'Stock', 'SellingPrice', 'PurchasePrice', 'Unit', 'Expiry'];
-    const rows = filtered.map((m) => [
-      m.name, m.genericName, m.category, m.company, m.batch, m.stock, m.sellingPrice, m.purchasePrice, m.unit, m.expiry,
-    ]);
-    if (format === 'excel') {
-      exportExcel(filename, [{ name: 'Inventory', headers, rows }]);
-    } else {
-      exportTablePdf({
-        filename,
-        title: 'Inventory Report',
-        subtitle: `Generated ${new Date().toLocaleDateString('en-IN')}`,
-        headers,
-        rows,
-        alignRight: [5, 6, 7],
-      });
+  const exportInventory = async (format) => {
+    try {
+      let rows = [];
+      if (activeStatus) {
+        const { data } = await fetchMedicinesByStatusApi(role, { status: statusMap[stockFilter], all: 'true' });
+        rows = (data?.data || []).map((m) => [
+          m.name, m.genericName, m.category, m.company, m.batch, m.stock, m.sellingPrice, m.purchasePrice, m.unit, m.expiry,
+        ]);
+      } else {
+        const params = { limit: 200 };
+        if (search.trim()) params.search = search.trim();
+        if (categoryFilter) params.category = categoryFilter;
+        if (companyFilter) params.company = companyFilter;
+        if (sort) params.sort = sort;
+        const { data } = await fetchMedicinesApi(role, params);
+        rows = (data?.data || []).map((m) => [
+          m.name, m.genericName, m.category, m.company, m.batch, m.stock, m.sellingPrice, m.purchasePrice, m.unit, m.expiry,
+        ]);
+      }
+      const filename = `inventory-${new Date().toISOString().slice(0, 10)}`;
+      const headers = ['Name', 'Generic', 'Category', 'Company', 'Batch', 'Stock', 'SellingPrice', 'PurchasePrice', 'Unit', 'Expiry'];
+      if (format === 'excel') {
+        exportExcel(filename, [{ name: 'Inventory', headers, rows }]);
+      } else {
+        exportTablePdf({
+          filename,
+          title: 'Inventory Report',
+          subtitle: `Generated ${new Date().toLocaleDateString('en-IN')}`,
+          headers,
+          rows,
+          alignRight: [5, 6, 7],
+        });
+      }
+    } catch {
+      toast.error('Failed to export inventory');
     }
   };
 
-  const filtered = (() => {
-    let list = [...medicines];
-
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((m) =>
-        m.name.toLowerCase().includes(q) ||
-        (m.genericName || '').toLowerCase().includes(q) ||
-        (m.category || '').toLowerCase().includes(q) ||
-        (m.company || '').toLowerCase().includes(q) ||
-        (m.batch || '').toLowerCase().includes(q)
-      );
-    }
-
-    if (categoryFilter) {
-      list = list.filter((m) => (m.category || '').toLowerCase().includes(categoryFilter.toLowerCase()));
-    }
-
-    if (companyFilter) {
-      list = list.filter((m) => (m.company || '').toLowerCase().includes(companyFilter.toLowerCase()));
-    }
-
-    if (stockFilter === 'low') {
-      list = list.filter((m) => m.stock > 0 && m.stock <= m.lowStockThreshold);
-    } else if (stockFilter === 'out') {
-      list = list.filter((m) => m.stock === 0);
-    } else if (stockFilter === 'expiring') {
-      list = list.filter((m) => isExpiringSoon(m.expiry));
-    } else if (stockFilter === 'expired') {
-      list = list.filter((m) => isExpired(m.expiry));
-    }
-
-    const sortMap = {
-      newest: (a, b) => new Date(b.expiry || 0) - new Date(a.expiry || 0),
-      oldest: (a, b) => new Date(a.expiry || 0) - new Date(b.expiry || 0),
-      name: (a, b) => a.name.localeCompare(b.name),
-      price: (a, b) => (b.sellingPrice || 0) - (a.sellingPrice || 0),
-      stock: (a, b) => (a.stock || 0) - (b.stock || 0),
-    };
-    list.sort(sortMap[sort] || sortMap.newest);
-
-    return list;
-  })();
-
-  const limit = 6;
-  const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
-  const paged = filtered.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.max(Math.ceil((tableTotal || 0) / LIMIT), 1);
+  const displayStart = tableTotal === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const displayEnd = Math.min(page * LIMIT, tableTotal || 0);
 
   const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -386,6 +400,7 @@ export default function InventoryPage() {
       setShowModal(null);
       setForm(emptyMedicine);
       setImageFile(null);
+      setChipTick((t) => t + 1);
     } catch (err) {
       const msg = typeof err === 'string' ? err : 'Failed to save medicine';
       setFormError(msg);
@@ -401,6 +416,7 @@ export default function InventoryPage() {
       await dispatch(deleteExistingMedicine({ role, id: deleteId })).unwrap();
       toast.success('Medicine deleted successfully');
       setDeleteId(null);
+      setChipTick((t) => t + 1);
   } catch {
     toast.error('Failed to delete medicine');
     setDeleteId(null);
@@ -677,7 +693,7 @@ export default function InventoryPage() {
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">Loading medicines...</td>
               </tr>
             )}
-            {!displayLoading && paged.length === 0 && (
+            {!displayLoading && medicines.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-16 text-center text-[14px] text-body">
                   <Pill size={36} className="mx-auto mb-3 text-line" />
@@ -685,7 +701,7 @@ export default function InventoryPage() {
                 </td>
               </tr>
             )}
-            {!displayLoading && paged.map((m) => {
+            {!displayLoading && medicines.map((m) => {
               const status = getStatus(m.stock, m.lowStockThreshold);
               const expired = isExpired(m.expiry);
               const expiring = isExpiringSoon(m.expiry);
@@ -769,7 +785,7 @@ export default function InventoryPage() {
       {!displayLoading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
-            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
+            Showing {displayStart}–{displayEnd} of {tableTotal || 0}
           </span>
           <div className="flex items-center gap-1">
             <button

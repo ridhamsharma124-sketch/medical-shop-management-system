@@ -43,6 +43,7 @@ export const fetchMedicinesByStatus = createAsyncThunk(
 
 const initialState = {
   statusItems: [],
+  statusTotal: 0,
   statusLoading: false,
   statusError: null,
   historyLogs: [],
@@ -64,6 +65,7 @@ const inventorySlice = createSlice({
       .addCase(fetchMedicinesByStatus.fulfilled, (state, action) => {
         state.statusLoading = false;
         state.statusItems = action.payload.data || [];
+        state.statusTotal = action.payload.total || state.statusItems.length;
       })
       .addCase(fetchMedicinesByStatus.rejected, (state, action) => {
         state.statusLoading = false;

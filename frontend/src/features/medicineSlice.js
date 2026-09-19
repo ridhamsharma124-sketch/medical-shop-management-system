@@ -82,6 +82,7 @@ export const deleteExistingMedicine = createAsyncThunk(
 
 const initialState = {
   items: [],
+  total: 0,
   loading: false,
   error: null,
   viewItem: null,
@@ -104,6 +105,7 @@ const medicineSlice = createSlice({
       .addCase(fetchMedicinesList.fulfilled, (state, action) => {
         state.loading = false;
         state.items = action.payload.data || [];
+        state.total = action.payload.total || state.items.length;
       })
       .addCase(fetchMedicinesList.rejected, (state, action) => {
         state.loading = false;
@@ -115,6 +117,7 @@ const medicineSlice = createSlice({
       .addCase(searchMedicinesList.fulfilled, (state, action) => {
         state.searchLoading = false;
         state.searchResults = action.payload.data || [];
+        state.total = action.payload.total || state.searchResults.length;
       })
       .addCase(searchMedicinesList.rejected, (state) => {
         state.searchLoading = false;
@@ -134,6 +137,7 @@ const medicineSlice = createSlice({
       .addCase(createNewMedicine.fulfilled, (state, action) => {
         const newMedicine = action.payload.data;
         if (newMedicine) state.items.unshift(newMedicine);
+        state.total = (state.total || 0) + 1;
       })
       .addCase(updateExistingMedicine.fulfilled, (state, action) => {
         const updated = action.payload.data;
@@ -144,6 +148,7 @@ const medicineSlice = createSlice({
       })
       .addCase(deleteExistingMedicine.fulfilled, (state, action) => {
         state.items = state.items.filter((m) => m._id !== action.payload.deletedId);
+        state.total = Math.max((state.total || 0) - 1, 0);
       });
   },
 });

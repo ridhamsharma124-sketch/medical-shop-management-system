@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
@@ -15,6 +15,8 @@ import {
   CalendarClock,
   AlertTriangle,
   Eye,
+  EyeOff,
+  Lock,
   Boxes,
   ShoppingCart,
   Receipt,
@@ -69,20 +71,29 @@ export default function PharmacistsPage() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [viewId, setViewId] = useState(null);
+  const [showPass, setShowPass] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
   const displayError = loadError && !errorDismissed ? loadError : '';
 
-  const loadData = useCallback(() => {
-    dispatch(fetchAllPharmacists({ page, limit, search: search || undefined }));
-  }, [dispatch, page, limit, search]);
+  const loadData = useCallback(
+    (targetPage = page, targetSearch = search) => {
+      dispatch(fetchAllPharmacists({ page: targetPage, limit, search: targetSearch || undefined }));
+    },
+    [dispatch, page, limit, search]
+  );
+
+  const prevSearchRef = useRef(search);
+  useEffect(() => {
+    if (prevSearchRef.current === search) return;
+    prevSearchRef.current = search;
+    const t = setTimeout(() => setPage(1), search ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setPage(1);
-      loadData();
-    }, search ? 300 : 0);
+    const t = setTimeout(() => loadData(), search ? 300 : 0);
     return () => clearTimeout(t);
-  }, [search, loadData]);
+  }, [loadData, search]);
 
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
@@ -132,6 +143,7 @@ export default function PharmacistsPage() {
       }
       setShowModal(null);
       setForm(emptyForm);
+      loadData();
     } catch (err) {
       const msg = typeof err === 'string' ? err : 'Failed to save pharmacist';
       setFormError(msg);
@@ -147,6 +159,7 @@ export default function PharmacistsPage() {
       await dispatch(deleteExistingPharmacist(deleteId)).unwrap();
       toast.success('Pharmacist deleted successfully');
       setDeleteId(null);
+      loadData();
   } catch {
     toast.error('Failed to delete pharmacist');
     setDeleteId(null);
@@ -356,13 +369,25 @@ export default function PharmacistsPage() {
 
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-heading">{showModal === 'add' ? 'Password *' : 'New Password (optional)'}</label>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setField('password', e.target.value)}
-                  className="h-10 w-full rounded-lg border border-line bg-bgprimary px-3.5 text-[14px] text-heading placeholder:text-[#B5A99A] focus:border-accent focus:outline-none focus:ring-[3px] focus:ring-accent/10"
-                  placeholder={showModal === 'add' ? 'Min 8 chars, 1 uppercase, 1 number, 1 special' : 'Leave blank to keep current'}
-                />
+                <div className="flex h-10 items-center gap-2.5 rounded-lg border border-line bg-bgprimary px-3.5 transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/10">
+                  <Lock size={16} className="shrink-0 text-body" />
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={(e) => setField('password', e.target.value)}
+                    className="h-full w-full border-none bg-transparent text-[14px] text-heading placeholder:text-[#B5A99A] focus:outline-none"
+                    placeholder={showModal === 'add' ? 'Min 8 chars, 1 uppercase, 1 number, 1 special' : 'Leave blank to keep current'}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPass((v) => !v)}
+                    className="shrink-0 text-body transition-colors hover:text-heading"
+                    aria-label="Toggle password visibility"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
 

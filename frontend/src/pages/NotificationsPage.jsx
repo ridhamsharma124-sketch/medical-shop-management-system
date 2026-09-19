@@ -53,6 +53,7 @@ export default function NotificationsPage() {
 
   const combinedItems = items;
   const allCount = combinedItems.length;
+  const displayTotal = !search && filter === 'all' ? total || allCount : allCount;
 
   useEffect(() => {
     if (role && items.length > 0 && !loading && !markedRef.current) {
@@ -216,8 +217,8 @@ export default function NotificationsPage() {
               {filtered.length}
             </span>{' '}
             of{' '}
-            <span className="font-bold text-heading">{filter === 'all' ? allCount : filtered.length}</span>{' '}
-            notification{allCount === 1 ? '' : 's'}
+            <span className="font-bold text-heading">{displayTotal}</span>{' '}
+            notification{displayTotal === 1 ? '' : 's'}
           </p>
           {filter === 'all' && items.length < total && (
             <button

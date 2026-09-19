@@ -29,6 +29,7 @@ import {
   clearPurchaseItems,
 } from '../../features/purchaseSlice';
 import { fetchSuppliersList } from '../../features/supplierSlice';
+import { fetchPurchaseOrders as fetchPurchaseOrdersApi } from '../../auth/purchaseService';
 import { fetchAllPharmacists } from '../../features/pharmacistSlice';
 import { fetchMedicinesList } from '../../features/medicineSlice';
 import CustomSelect from '../../components/ui/CustomSelect';
@@ -63,6 +64,12 @@ export default function PurchasesPage() {
   const { items: suppliers } = useSelector((state) => state.suppliers);
   const { items: pharmacists } = useSelector((state) => state.pharmacists);
   const { items: medicines } = useSelector((state) => state.medicines);
+  const [rows, setRows] = useState([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState('');
+  const [retryTick, setRetryTick] = useState(0);
+  const LIMIT = 6;
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -89,25 +96,40 @@ export default function PurchasesPage() {
     return () => dispatch(clearPurchaseDetail());
   }, [loadData, dispatch, role]);
 
-  const filtered = useMemo(() => {
-    let list = [...orders];
+  useEffect(() => {
+    let active = true;
+    const params = { page, limit: LIMIT };
+    if (search.trim()) params.orderNumber = search.trim();
     if (thisMonthOnly) {
       const now = new Date();
-      list = list.filter((o) => {
-        const d = new Date(o.createdAt);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      });
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      params.startDate = from.toISOString().split('T')[0];
+      params.endDate = to.toISOString().split('T')[0];
     }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((o) =>
-        o.orderNumber?.toLowerCase().includes(q) ||
-        (o.supplier?.name || '').toLowerCase().includes(q) ||
-        (typeof o.pharmacist === 'object' && o.pharmacist?.name || '').toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [orders, search, thisMonthOnly]);
+    const t = setTimeout(() => {
+      setRowsLoading(true);
+      setRowsError('');
+      fetchPurchaseOrdersApi(role, params)
+        .then((res) => {
+          if (!active) return;
+          setRows(res.data?.data || []);
+          setRowsTotal(res.data?.total || 0);
+        })
+        .catch((err) => {
+          if (active) setRowsError(err.response?.data?.message || 'Failed to load purchase orders');
+        })
+        .finally(() => {
+          if (active) setRowsLoading(false);
+        });
+    }, search.trim() ? 300 : 0);
+    return () => {
+      clearTimeout(t);
+      active = false;
+    };
+  }, [role, page, search, thisMonthOnly, retryTick]);
+
+  const totalSpent = useMemo(() => orders.reduce((acc, o) => acc + (o.totalAmount || 0), 0), [orders]);
 
   const thisMonthCount = useMemo(() => {
     const now = new Date();
@@ -117,11 +139,9 @@ export default function PurchasesPage() {
     }).length;
   }, [orders]);
 
-  const totalSpent = useMemo(() => orders.reduce((acc, o) => acc + (o.totalAmount || 0), 0), [orders]);
-
-  const limit = 6;
-  const totalPages = Math.max(Math.ceil(filtered.length / limit), 1);
-  const paged = filtered.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.max(Math.ceil((rowsTotal || 0) / LIMIT), 1);
+  const displayStart = rowsTotal === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const displayEnd = Math.min(page * LIMIT, rowsTotal || 0);
 
   const fallbackMedicines = useMemo(() => {
     const phId = form.pharmacistId;
@@ -210,6 +230,7 @@ export default function PurchasesPage() {
       setForm({ supplierId: '', pharmacistId: role === 'admin' ? '' : user._id });
       setItems([emptyItem]);
       loadData();
+      setRetryTick((t) => t + 1);
     } catch (err) {
       const msg = typeof err === 'string' ? err : 'Failed to create purchase order';
       setFormError(msg);
@@ -282,10 +303,13 @@ export default function PurchasesPage() {
         </div>
       </div>
 
-      {loadError && (
+      {(loadError || rowsError) && (
         <div className="flex items-center justify-between gap-3 rounded-lgx border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-600">
-          <span>{loadError}</span>
-          <button onClick={loadData} className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100">
+          <span>{loadError || rowsError}</span>
+          <button
+            onClick={() => { loadData(); setRetryTick((t) => t + 1); }}
+            className="shrink-0 rounded-lg px-3 py-1 text-[12px] font-bold text-red-600 transition-colors hover:bg-red-100"
+          >
             Retry
           </button>
         </div>
@@ -352,12 +376,12 @@ export default function PurchasesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {loading && (
+{rowsLoading && (
               <tr>
-                <td colSpan={role === 'admin' ? 6 : 5} className="px-4 py-16 text-center text-[14px] text-body">Loading purchase orders...</td>
+                <td colSpan={role === 'admin' ? 6 : 5} className="px-4 py-16 text-center text-[14px] text-body">Loading purchases...</td>
               </tr>
             )}
-            {!loading && paged.length === 0 && (
+            {!rowsLoading && rows.length === 0 && (
               <tr>
                 <td colSpan={role === 'admin' ? 6 : 5} className="px-4 py-16 text-center text-[14px] text-body">
                   <ShoppingCart size={36} className="mx-auto mb-3 text-line" />
@@ -365,7 +389,7 @@ export default function PurchasesPage() {
                 </td>
               </tr>
             )}
-            {!loading && paged.map((o) => (
+            {!rowsLoading && rows.map((o) => (
               <tr key={o._id} className="cursor-pointer transition-colors even:bg-bgprimary/35 hover:bg-bgprimary/60" onClick={() => openView(o._id)}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -412,10 +436,10 @@ export default function PurchasesPage() {
       </div>
 
       {/* Pagination */}
-      {!loading && totalPages > 1 && (
+      {!rowsLoading && totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[13px] text-body">
-            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} of {filtered.length}
+            Showing {displayStart}–{displayEnd} of {rowsTotal || 0}
           </span>
           <div className="flex items-center gap-1">
             <button

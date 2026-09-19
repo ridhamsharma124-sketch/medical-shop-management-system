@@ -15,6 +15,14 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      toast.error('Email and password are required');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
     const result = await dispatch(login({ email, password }));
     if (result.meta.requestStatus === 'fulfilled') {
       const firstName = result.payload.user?.name?.split(' ')[0] || 'there';
@@ -28,7 +36,7 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[45fr_55fr]">
       {/* Left — image with overlay + bottom-aligned text */}
-      <div className="relative hidden h-screen overflow-hidden lg:block">
+      <div className="relative hidden h-screen overflow-hidden lg:sticky lg:top-0 lg:block">
         <img
           src="/auth-bg.jpg"
           alt="Medicine shelf in a pharmacy"
@@ -136,6 +144,18 @@ export default function LoginPage() {
               Create Account
             </Link>
           </p>
+
+          <div className="mt-8 flex flex-col items-center gap-2 border-t border-line pt-6 text-[12.5px]">
+            <span className="text-body">
+              Powered by <span className="font-semibold text-heading">MedHeritage</span>
+            </span>
+            <Link
+              to="/privacy-policy"
+              className="font-medium text-accent transition-opacity hover:opacity-80"
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </div>
     </div>
